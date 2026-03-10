@@ -1,7 +1,7 @@
 import uuid
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, JSONResponse
 from app.core.config import settings
 
 
@@ -68,3 +68,22 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         response.headers["X-Request-ID"] = request_id
 
         return response
+
+
+class MaxRequestBodySizeMiddleware(BaseHTTPMiddleware):
+    """
+    Rejects requests whose Content-Length header exceeds the configured limit.
+    Prevents oversized payloads from consuming server resources.
+    """
+
+    async def dispatch(self, request: Request, call_next) -> Response:
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > settings.MAX_REQUEST_BODY_SIZE:
+            return JSONResponse(
+                status_code=413,
+                content={
+                    "detail": f"Request body too large. "
+                              f"Maximum: {settings.MAX_REQUEST_BODY_SIZE // (1024 * 1024)} MB"
+                },
+            )
+        return await call_next(request)

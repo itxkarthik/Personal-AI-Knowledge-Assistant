@@ -125,6 +125,7 @@ class Settings(BaseSettings):
     # File Storage
     UPLOAD_DIR: Path = Path("./uploads")
     MAX_FILE_SIZE: int = 1024 * 1024 * 10  # 10 MB
+    MAX_REQUEST_BODY_SIZE: int = 1024 * 1024 * 15  # 15 MB (slightly larger than max file to allow form overhead)
     ALLOWED_EXTENSIONS: List[str] = [".pdf", ".md", ".docx", ".txt"]
     
     # Rate Limiting

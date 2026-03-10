@@ -5,7 +5,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.database import create_db_and_tables
-from app.core.middleware import SecurityHeadersMiddleware, RequestIDMiddleware
+from app.core.middleware import SecurityHeadersMiddleware, RequestIDMiddleware, MaxRequestBodySizeMiddleware
 from app.api.main import api_router
 
 # Rate Limiter
@@ -29,7 +29,10 @@ app.add_middleware(RequestIDMiddleware)
 # 2. Security Headers — added to every response
 app.add_middleware(SecurityHeadersMiddleware)
 
-# 3. CORS — locked down to specific methods and headers
+# 3. Max Request Body Size — reject oversized payloads early
+app.add_middleware(MaxRequestBodySizeMiddleware)
+
+# 4. CORS — locked down to specific methods and headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.all_cors_origins,

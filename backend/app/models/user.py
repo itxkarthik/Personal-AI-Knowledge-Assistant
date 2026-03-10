@@ -5,6 +5,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 from .chat import TimestampMixin
+from app.utils.sanitization import sanitize_plain_text
 
 if TYPE_CHECKING:
     from .note import Notes, NoteFolders, NoteTags, NoteTemplates, NoteCollaborators
@@ -18,6 +19,18 @@ class UserBase(SQLModel):
     is_superuser: bool = False
     full_name: str | None = Field(default=None, max_length=255)
 
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def sanitize_full_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return sanitize_plain_text(v)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def sanitize_email(cls, v: str) -> str:
+        return sanitize_plain_text(v)
+
 # Creation API properties
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=128)
@@ -27,6 +40,18 @@ class UserRegister(SQLModel):
     password: str = Field(min_length=8, max_length=128)
     full_name: str | None = Field(default=None, max_length=255)
 
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def sanitize_full_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return sanitize_plain_text(v)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def sanitize_email(cls, v: str) -> str:
+        return sanitize_plain_text(v)
+
 # Update API properties | Optional
 class UserUpdate(UserBase):
     email: str | None = Field(default=None, max_length=255)
@@ -35,6 +60,20 @@ class UserUpdate(UserBase):
 class UserUpdateMe(SQLModel):
     full_name: str | None = Field(default=None, max_length=255)
     email: str | None = Field(default=None, max_length=255)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def sanitize_full_name(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return sanitize_plain_text(v)
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def sanitize_email(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        return sanitize_plain_text(v)
     
 class UpdatePassword(SQLModel):
     current_password: str = Field(min_length=8, max_length=128)
