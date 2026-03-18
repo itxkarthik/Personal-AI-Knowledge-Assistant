@@ -42,7 +42,7 @@ class ChatSession(TimestampMixin, SQLModel, table=True):
 
 class ChatRole(str, Enum):
     user ="user"
-    assistant = "asssistant"
+    assistant = "assistant"
     system = "system"
 
 class ChatMessages(TimestampMixin, SQLModel, table=True):
