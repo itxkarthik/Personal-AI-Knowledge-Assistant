@@ -140,6 +140,9 @@ class Settings(BaseSettings):
     LOG_FORMAT: str = "%(asctime)s - %(levelname)s - %(message)s"
     LOG_FILE: Path = Path("./logs/app.log")
 
+    # AI
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+
     def get_database_url(self) -> str:
         if self.DATABASE_URL:
             return self.DATABASE_URL

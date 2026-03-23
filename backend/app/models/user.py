@@ -148,7 +148,7 @@ class UserSettings(TimestampMixin, SQLModel, table=True):
     user_id: int | None = Field(primary_key=True, foreign_key="users.id")
     llm_provider: LlmProvider = Field(default=LlmProvider.ollama)
     llm_model: str = Field(default="tinyllama", max_length=100)
-    embedding_model: str = Field(default="text-embedding-ada-002", max_length=100)
+    embedding_model: str = Field(default="nomic-embed-text", max_length=100)
     chunk_size: int = Field(default=1000)
     chunk_overlap: int = Field(default=200)
     top_k_results: int = Field(default=5)

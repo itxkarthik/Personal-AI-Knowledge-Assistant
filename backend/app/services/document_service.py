@@ -7,6 +7,8 @@ from pathlib import Path
 from fastapi import HTTPException, UploadFile
 from sqlmodel import Session, col, or_, select
 
+from app.ai.embeddings import generate_embeddings
+from app.ai.vectorstore import PgVectorStore
 from app.core.config import settings
 from app.models.document import Document, DocumentChunks
 from app.models.user import User
@@ -18,6 +20,8 @@ from app.utils.text_processing import clean_text, create_content_preview, split_
 
 async def upload_and_process_document(*, session: Session, current_user: User, file: UploadFile, title: str | None = None, tags: list[str] | None = None, language: str = "en") -> Document:
 	await _validate_and_prepare(file)
+	if current_user.id is None:
+		raise HTTPException(status_code=400, detail="Invalid user context")
 
 	saved_path = _save_upload(file)
 	file_size = Path(saved_path).stat().st_size
@@ -49,17 +53,35 @@ async def upload_and_process_document(*, session: Session, current_user: User, f
 		document.summary = create_content_preview(content, 300) if content else None
 		document.status = "completed"
 
+		chunk_rows: list[DocumentChunks] = []
+
 		for index, chunk_content in enumerate(chunks):
-			session.add(
-				DocumentChunks(
-					document_id=document.id,
-					chunk_index=index,
-					content=chunk_content,
-					content_hash=hashlib.sha256(chunk_content.encode("utf-8")).hexdigest(),
-					vector_id=f"doc-{document.id}-chunk-{index}",
-					token_count=len(chunk_content.split()),
-					char_count=len(chunk_content),
-				)
+			chunk_row = DocumentChunks(
+				document_id=document.id,
+				chunk_index=index,
+				content=chunk_content,
+				content_hash=hashlib.sha256(chunk_content.encode("utf-8")).hexdigest(),
+				vector_id=f"doc-{document.id}-chunk-{index}",
+				token_count=len(chunk_content.split()),
+				char_count=len(chunk_content),
+			)
+			session.add(chunk_row)
+			chunk_rows.append(chunk_row)
+
+		session.flush()
+
+		if chunk_rows:
+			embeddings, embedding_model = await generate_embeddings(
+				session=session,
+				user_id=current_user.id,
+				texts=[chunk.content for chunk in chunk_rows],
+			)
+			vector_store = PgVectorStore(session=session)
+			vector_store.store_document_chunk_embeddings(
+				chunks=chunk_rows,
+				embeddings=embeddings,
+				user_id=current_user.id,
+				model=embedding_model,
 			)
 
 		session.add(document)
