@@ -3,10 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 
 from fastapi import HTTPException
-from sqlmodel import Session, col, or_, select
+from sqlmodel import Session, col, select
 
+from app.ai.rag import run_rag_pipeline
 from app.models.chat import ChatMessages, ChatSession
-from app.models.document import Document
 from app.models.note import Notes
 from app.models.user import User
 from app.schemas.chat import ChatCreate, ChatMessageCreate
@@ -153,49 +153,12 @@ def get_chat_session_by_id(*, session: Session, current_user: User, chat_session
 
 
 def _invoke_rag(*, session: Session, current_user: User, query: str) -> tuple[str, dict]:
-	like_query = f"%{query}%"
+	if current_user.id is None:
+		raise HTTPException(status_code=400, detail="Invalid user context")
 
-	note_hits = session.exec(
-		select(Notes)
-		.where(
-			Notes.user_id == current_user.id,
-			Notes.is_deleted == False,
-			or_(
-				col(Notes.title).ilike(like_query),
-				col(Notes.content).ilike(like_query),
-			),
-		)
-		.order_by(col(Notes.updated_at).desc())
-		.limit(3)
-	).all()
-
-	document_hits = session.exec(
-		select(Document)
-		.where(
-			Document.user_id == current_user.id,
-			Document.is_deleted == False,
-			or_(
-				col(Document.title).ilike(like_query),
-				col(Document.content).ilike(like_query),
-			),
-		)
-		.order_by(col(Document.updated_at).desc())
-		.limit(3)
-	).all()
-
-	snippets: list[str] = []
-	for note in note_hits:
-		snippets.append(f"Note {note.id}: {create_content_preview(note.content or note.title, 160)}")
-	for document in document_hits:
-		snippets.append(f"Document {document.id}: {create_content_preview(document.content or document.title, 160)}")
-
-	if snippets:
-		answer = "I found relevant context in your knowledge base:\n\n" + "\n".join(f"- {item}" for item in snippets)
-	else:
-		answer = "I could not find relevant context in your notes/documents yet. Add more content and try again."
-
-	sources = {
-		"notes": [note.id for note in note_hits],
-		"documents": [document.id for document in document_hits],
-	}
-	return answer, sources
+	rag_result = run_rag_pipeline(
+		session=session,
+		user_id=current_user.id,
+		query=query,
+	)
+	return rag_result.answer, rag_result.sources
