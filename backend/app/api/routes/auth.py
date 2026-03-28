@@ -1,27 +1,68 @@
 from datetime import datetime, timedelta, timezone
+import secrets
 from typing import Annotated, Any
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from pydantic import BaseModel
-from sqlmodel import Session
 
 from app.core import security
 from app.core.config import settings
 from app import crud
-from app.api.deps import CurrentUser, SessionDep, TokenDep, get_current_active_superuser
+from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.models.user import Message, Token, UserPublic, TokenPayload
 from app.core.rate_limit import limiter
 
 router = APIRouter(tags=["login"])
 
 
+def _set_auth_cookies(response: Response, access_token: str, refresh_token: str) -> None:
+    secure = settings.ENVIRONMENT != "local"
+    csrf_token = secrets.token_urlsafe(32)
+
+    response.set_cookie(
+        key=settings.ACCESS_TOKEN_COOKIE_NAME,
+        value=access_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=refresh_token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+    )
+    response.set_cookie(
+        key=settings.CSRF_COOKIE_NAME,
+        value=csrf_token,
+        httponly=False,
+        secure=secure,
+        samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+        path="/",
+    )
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(key=settings.ACCESS_TOKEN_COOKIE_NAME, path="/")
+    response.delete_cookie(key=settings.REFRESH_TOKEN_COOKIE_NAME, path="/")
+    response.delete_cookie(key=settings.CSRF_COOKIE_NAME, path="/")
+
+
 @router.post(path="/login/access-token")
 @limiter.limit("5/minute")
 def login_access_token(
         request: Request,
-        session: SessionDep, form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
+    response: Response,
+    session: SessionDep,
+    form_data: Annotated[OAuth2PasswordRequestForm, Depends()]
     ) -> Token:
     """
         OAuth2 token login, get an access token for future requests.
@@ -48,6 +89,7 @@ def login_access_token(
         raw_token=raw_refresh_token,
         expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
+    _set_auth_cookies(response, access_token=access_token, refresh_token=raw_refresh_token)
 
     return Token(
         access_token=access_token,
@@ -56,16 +98,25 @@ def login_access_token(
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None
 
 
 @router.post(path="/auth/refresh")
-def refresh_access_token(body: RefreshRequest, session: SessionDep) -> Token:
+def refresh_access_token(
+    request: Request,
+    response: Response,
+    body: RefreshRequest,
+    session: SessionDep,
+) -> Token:
     """
     Exchange a valid refresh token for a new access + refresh token pair.
     The old refresh token is revoked (rotation).
     """
-    hashed = security.hash_refresh_token(body.refresh_token)
+    refresh_token = body.refresh_token or request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+    if not refresh_token:
+        raise HTTPException(status_code=401, detail="Missing refresh token")
+
+    hashed = security.hash_refresh_token(refresh_token)
     db_token = crud.get_refresh_token_by_hash(session=session, hashed_token=hashed)
 
     if not db_token:
@@ -87,6 +138,7 @@ def refresh_access_token(body: RefreshRequest, session: SessionDep) -> Token:
         raw_token=raw_refresh_token,
         expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
+    _set_auth_cookies(response, access_token=access_token, refresh_token=raw_refresh_token)
 
     return Token(
         access_token=access_token,
@@ -95,7 +147,7 @@ def refresh_access_token(body: RefreshRequest, session: SessionDep) -> Token:
 
 
 @router.post(path="/auth/logout")
-def logout(session: SessionDep, token: TokenDep, current_user: CurrentUser) -> Message:
+def logout(response: Response, session: SessionDep, token: TokenDep, current_user: CurrentUser) -> Message:
     """
     Logout: blacklist the current access token and revoke all refresh tokens
     for the user.
@@ -116,6 +168,7 @@ def logout(session: SessionDep, token: TokenDep, current_user: CurrentUser) -> M
 
     # Revoke all refresh tokens for this user
     crud.revoke_all_user_refresh_tokens(session=session, user_id=current_user.id)
+    _clear_auth_cookies(response)
 
     return Message(message="Successfully logged out")
 

@@ -1,8 +1,12 @@
 from pathlib import Path
+import logging
 
 from fastapi import HTTPException
 from pypdf import PdfReader
 from docx import Document as DocxDocument
+
+
+logger = logging.getLogger(__name__)
 
 
 def extract_text_from_file(file_path: str) -> str:
@@ -27,16 +31,18 @@ def _extract_pdf_text(file_path: str) -> str:
 		for page in reader.pages:
 			parts.append(page.extract_text() or "")
 		return "\n".join(parts)
-	except Exception as exc:
-		raise HTTPException(status_code=400, detail=f"Failed to read PDF: {exc}")
+	except Exception:
+		logger.exception("Failed to parse PDF", extra={"file_path": file_path})
+		raise HTTPException(status_code=400, detail="Failed to read PDF file")
 
 
 def _extract_docx_text(file_path: str) -> str:
 	try:
 		doc = DocxDocument(file_path)
 		return "\n".join(paragraph.text for paragraph in doc.paragraphs)
-	except Exception as exc:
-		raise HTTPException(status_code=400, detail=f"Failed to read DOCX: {exc}")
+	except Exception:
+		logger.exception("Failed to parse DOCX", extra={"file_path": file_path})
+		raise HTTPException(status_code=400, detail="Failed to read DOCX file")
 
 
 def _extract_markdown_text(file_path: str) -> str:
@@ -47,5 +53,6 @@ def _extract_plain_text(file_path: str) -> str:
 	try:
 		with open(file_path, "r", encoding="utf-8", errors="replace") as file:
 			return file.read()
-	except Exception as exc:
-		raise HTTPException(status_code=400, detail=f"Failed to read text file: {exc}")
+	except Exception:
+		logger.exception("Failed to parse text file", extra={"file_path": file_path})
+		raise HTTPException(status_code=400, detail="Failed to read text file")

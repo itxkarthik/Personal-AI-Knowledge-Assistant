@@ -101,7 +101,10 @@ class User(TimestampMixin, UserBase, SQLModel, table=True):
         "uselist": False,
         "cascade": "all, delete-orphan"
     })
-    notes: list["Notes"] = Relationship(back_populates="user")
+    notes: list["Notes"] = Relationship(
+        back_populates="user",
+        sa_relationship_kwargs={"foreign_keys": "[Notes.user_id]"},
+    )
     folders: list["NoteFolders"] = Relationship(back_populates="user")
     tags: list["NoteTags"] = Relationship(back_populates="user")
     templates: list["NoteTemplates"] = Relationship(back_populates="user")
@@ -165,9 +168,9 @@ class UserSettings(TimestampMixin, SQLModel, table=True):
     # Relationships
     user: User = Relationship(back_populates="settings")
     default_folder: Optional["NoteFolders"] = Relationship(
+        back_populates="user_settings",
         sa_relationship_kwargs={
-            "foreign_keys": "[UserSettings.default_note_folder_id]",
-            "cascade": "all, delete-orphan"
+            "foreign_keys": "[UserSettings.default_note_folder_id]"
         }
     )
 

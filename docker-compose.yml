@@ -1,4 +1,22 @@
 services:
+  # Next.js Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    container_name: pka-frontend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000/api/v1}
+    ports:
+      - "8080:3000"
+    depends_on:
+      backend:
+        condition: service_started
+    networks:
+      - pka-network
+
   # PostgreSQL Database
   db:
     image: postgres:16-alpine
@@ -40,8 +58,8 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-knowledge_assistant}
       
       # CORS
-      FRONTEND_HOST: ${FRONTEND_HOST:-http://localhost:3000}
-      BACKEND_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000","http://localhost:8000","http://127.0.0.1:8000"]'
+      FRONTEND_HOST: ${FRONTEND_HOST:-http://localhost:8080}
+      BACKEND_CORS_ORIGINS: '["http://localhost:8080","http://127.0.0.1:8080","http://localhost:3000","http://127.0.0.1:3000"]'
       
       # Security
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}

@@ -36,9 +36,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 30 minutes
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7  # 7 days
     ENVIRONMENT: Literal["local", "staging", "production"] = "local"
+    ACCESS_TOKEN_COOKIE_NAME: str = "auth-access-token"
+    REFRESH_TOKEN_COOKIE_NAME: str = "auth-refresh-token"
+    CSRF_COOKIE_NAME: str = "csrf-token"
+    CSRF_HEADER_NAME: str = "X-CSRF-Token"
    
     # CORS Info
-    FRONTEND_HOST: str = "http://localhost:5173"
+    FRONTEND_HOST: str = "http://localhost:8080"
     BACKEND_CORS_ORIGINS: Annotated[
         list[AnyUrl] | str, BeforeValidator(parse_cors)
     ] = []
@@ -52,7 +56,7 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Personal Knowledge Assistant"
     PROJECT_DESCRIPTION: str = "A personal knowledge assistant"
     VERSION: str = "0.1.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
     
     # Server Configuration
     HOST: str = "localhost"
@@ -60,7 +64,7 @@ class Settings(BaseSettings):
     
     # Database Info
     POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = "postgres"
+    POSTGRES_PASSWORD: str = "changethis"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "knowledge_assistant"
@@ -102,7 +106,7 @@ class Settings(BaseSettings):
         
     EMAIL_TEST_USER: str = "test@example.com"
     FIRST_SUPERUSER: str = "admin@example.com"
-    FIRST_SUPERUSER_PASSWORD: str = "password"
+    FIRST_SUPERUSER_PASSWORD: str = "changethis"
     
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
         if value == "changethis":

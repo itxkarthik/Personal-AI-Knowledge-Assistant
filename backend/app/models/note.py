@@ -44,7 +44,7 @@ class NoteFolders(TimestampMixin, SQLModel, table=True):
         sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
     notes: List["Notes"] = Relationship(back_populates="folder")
-    user_settings: List["UserSettings"] = Relationship()
+    user_settings: List["UserSettings"] = Relationship(back_populates="default_folder")
 
 class NoteTagRelations(SQLModel, table=True):
     __tablename__ = "note_tag_relations"
@@ -95,7 +95,10 @@ class Notes(TimestampMixin, SQLModel, table=True):
     last_edited_at: datetime = Field(default_factory=datetime.now)
     
     # Relationships
-    user: "User" = Relationship(back_populates="notes")
+    user: "User" = Relationship(
+        back_populates="notes",
+        sa_relationship_kwargs={"foreign_keys": "[Notes.user_id]"},
+    )
     folder: NoteFolders | None = Relationship(back_populates="notes")
     linked_document: Optional["Document"] | None = Relationship(
         back_populates="linked_notes", 
@@ -111,7 +114,10 @@ class Notes(TimestampMixin, SQLModel, table=True):
     )
     child_notes: list["Notes"] = Relationship(
         back_populates="parent_note",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+        sa_relationship_kwargs={
+            "cascade": "all, delete-orphan",
+            "foreign_keys": "[Notes.parent_note_id]",
+        }
     )
     previous_version: Optional["Notes"] | None = Relationship(
         sa_relationship_kwargs={"remote_side": "[Notes.id]", "foreign_keys": "[Notes.previous_version_id]"}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import uuid
 from pathlib import Path
 
@@ -16,6 +17,9 @@ from app.schemas.document import DocumentUpdate
 from app.utils.file_processing import extract_text_from_file
 from app.utils.file_validation import validate_upload_file
 from app.utils.text_processing import clean_text, create_content_preview, split_text_into_chunks
+
+
+logger = logging.getLogger(__name__)
 
 
 async def upload_and_process_document(*, session: Session, current_user: User, file: UploadFile, title: str | None = None, tags: list[str] | None = None, language: str = "en") -> Document:
@@ -94,12 +98,13 @@ async def upload_and_process_document(*, session: Session, current_user: User, f
 		session.add(document)
 		session.commit()
 		raise
-	except Exception as exc:
+	except Exception:
+		logger.exception("Document processing failed", extra={"document_id": document.id, "user_id": current_user.id})
 		document.status = "failed"
-		document.processing_error = str(exc)
+		document.processing_error = "Unexpected server error during document processing"
 		session.add(document)
 		session.commit()
-		raise HTTPException(status_code=500, detail=f"Failed to process document: {exc}")
+		raise HTTPException(status_code=500, detail="Failed to process document")
 
 
 async def _validate_and_prepare(file: UploadFile) -> None:
