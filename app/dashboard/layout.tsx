@@ -7,5 +7,9 @@ export default function DashboardRootLayout({
 }: {
 	children: ReactNode;
 }) {
-	return <DashboardLayout>{children}</DashboardLayout>;
+	return (
+		<DashboardLayout>
+			<div className="mx-auto w-full max-w-7xl">{children}</div>
+		</DashboardLayout>
+	);
 }
