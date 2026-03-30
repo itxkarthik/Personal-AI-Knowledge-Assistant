@@ -19,7 +19,7 @@ services:
 
   # PostgreSQL Database
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     container_name: pka-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -66,6 +66,9 @@ services:
       
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # AI
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
     ports:
       - "3000:3000"
     depends_on:

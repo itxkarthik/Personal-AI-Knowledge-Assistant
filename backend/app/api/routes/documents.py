@@ -4,7 +4,12 @@ from fastapi import APIRouter, File, Form, Query, UploadFile
 
 from app.api.deps import CurrentUser, SessionDep
 from app.models.user import Message
-from app.schemas.document import DocumentList, DocumentResponse, DocumentUpdate
+from app.schemas.document import (
+	DocumentContentResponse,
+	DocumentList,
+	DocumentResponse,
+	DocumentUpdate,
+)
 from app.services.document_service import (
 	get_document_by_id,
 	list_documents,
@@ -60,6 +65,18 @@ def read_documents(
 @router.get(path="/{document_id}", response_model=DocumentResponse)
 def read_document_by_id(*, session: SessionDep, current_user: CurrentUser, document_id: int) -> Any:
 	return get_document_by_id(session=session, current_user=current_user, document_id=document_id)
+
+
+@router.get(path="/{document_id}/content", response_model=DocumentContentResponse)
+def read_document_content(*, session: SessionDep, current_user: CurrentUser, document_id: int) -> Any:
+	document = get_document_by_id(session=session, current_user=current_user, document_id=document_id)
+	return DocumentContentResponse(
+		id=document.id,
+		title=document.title,
+		status=document.status,
+		content=document.content or "",
+		updated_at=document.updated_at,
+	)
 
 
 @router.patch(path="/{document_id}", response_model=DocumentResponse)

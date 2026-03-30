@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -11,12 +13,19 @@ from app.api.main import api_router
 # Rate Limiter
 from app.core.rate_limit import limiter
 
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    create_db_and_tables()
+    yield
+
 # FastAPI app
 app = FastAPI(
     title=settings.PROJECT_NAME,
     description=settings.PROJECT_DESCRIPTION,
     version=settings.VERSION,
-    debug=settings.DEBUG
+    debug=settings.DEBUG,
+    lifespan=lifespan,
 )
 
 # Attach limiter state so slowapi can access it inside route handlers
@@ -47,11 +56,6 @@ app.add_middleware(
         "X-Requested-With",
     ],
 )
-
-# Startup
-@app.on_event("startup")
-def on_startup():
-    create_db_and_tables()
 
 # Public endpoints
 @app.get("/")

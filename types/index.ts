@@ -142,6 +142,14 @@ export interface DocumentResponse {
 	updated_at: string;
 }
 
+export interface DocumentContentResponse {
+	id: number;
+	title: string;
+	status: string;
+	content: string;
+	updated_at: string;
+}
+
 export interface DocumentList {
 	data: DocumentResponse[];
 	count: number;

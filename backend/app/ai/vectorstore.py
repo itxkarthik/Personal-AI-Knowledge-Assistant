@@ -92,7 +92,7 @@ class PgVectorStore:
 					updated_at = NOW()
 				"""
 			),
-			{
+			params={
 				"chunk_id": chunk_id,
 				"document_id": document_id,
 				"user_id": user_id,
@@ -181,7 +181,7 @@ class PgVectorStore:
 			"""
 		)
 
-		rows = self.session.exec(statement, params).all()
+		rows = self.session.exec(statement, params=params).all()
 		return [
 			VectorSearchResult(
 				chunk_id=row.chunk_id,

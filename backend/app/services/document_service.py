@@ -22,6 +22,32 @@ from app.utils.text_processing import clean_text, create_content_preview, split_
 logger = logging.getLogger(__name__)
 
 
+def _mark_document_failed(*, session: Session, document_id: int | None, reason: str) -> None:
+	try:
+		session.rollback()
+	except Exception:
+		pass
+
+	if document_id is None:
+		return
+
+	try:
+		document = session.get(Document, document_id)
+		if document is None:
+			return
+
+		document.status = "failed"
+		document.processing_error = reason
+		session.add(document)
+		session.commit()
+	except Exception:
+		session.rollback()
+		logger.exception(
+			"Failed to persist document failure state",
+			extra={"document_id": document_id},
+		)
+
+
 async def upload_and_process_document(*, session: Session, current_user: User, file: UploadFile, title: str | None = None, tags: list[str] | None = None, language: str = "en") -> Document:
 	await _validate_and_prepare(file)
 	if current_user.id is None:
@@ -93,17 +119,19 @@ async def upload_and_process_document(*, session: Session, current_user: User, f
 		session.refresh(document)
 		return document
 	except HTTPException:
-		document.status = "failed"
-		document.processing_error = "Failed to process file"
-		session.add(document)
-		session.commit()
+		_mark_document_failed(
+			session=session,
+			document_id=document.id,
+			reason="Failed to process file",
+		)
 		raise
 	except Exception:
 		logger.exception("Document processing failed", extra={"document_id": document.id, "user_id": current_user.id})
-		document.status = "failed"
-		document.processing_error = "Unexpected server error during document processing"
-		session.add(document)
-		session.commit()
+		_mark_document_failed(
+			session=session,
+			document_id=document.id,
+			reason="Unexpected server error during document processing",
+		)
 		raise HTTPException(status_code=500, detail="Failed to process document")
 
 

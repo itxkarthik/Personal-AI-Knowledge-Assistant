@@ -83,6 +83,16 @@ class DocumentResponse(BaseModel):
 	updated_at: datetime
 
 
+class DocumentContentResponse(BaseModel):
+	model_config = ConfigDict(from_attributes=True)
+
+	id: int
+	title: str
+	status: str
+	content: str
+	updated_at: datetime
+
+
 class DocumentList(BaseModel):
 	data: list[DocumentResponse]
 	count: int
