@@ -43,7 +43,7 @@ async def upload_document(
 	return document
 
 
-@router.get(path="/", response_model=DocumentList)
+@router.get("/", response_model=DocumentList)
 def read_documents(
 	*,
 	session: SessionDep,

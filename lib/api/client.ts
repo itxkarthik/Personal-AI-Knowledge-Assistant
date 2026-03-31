@@ -42,6 +42,17 @@ const refreshClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+	// Preserve trailing slashes for endpoints that need them
+	if (config.url) {
+		// For documents endpoints that match /documents or /documents/upload etc
+		if (config.url.match(/^\/documents([/?]|$)/) && !config.url.endsWith("/") && config.url !== "/documents/upload") {
+			// Add trailing slash if not present and it's a GET request with params
+			if (config.method?.toLowerCase() === "get" && config.params && Object.keys(config.params).length > 0) {
+				config.url = config.url + "/";
+			}
+		}
+	}
+
 	const method = (config.method ?? "get").toUpperCase();
 	if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
 		return config;

@@ -1,31 +1,52 @@
-import type { ReactNode } from "react";
+"use client";
 
-import { AuthBootstrap } from "@/components/auth/AuthBootstrap";
+import type { ReactNode } from "react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { useAuthStore } from "@/store/authStore";
 
 interface DashboardLayoutProps {
-	children: ReactNode;
+  children: ReactNode;
 }
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
-	return (
-		<ErrorBoundary>
-			<AuthBootstrap />
-			<div className="min-h-screen bg-zinc-950 text-zinc-100">
-				<div className="absolute inset-0 -z-0 opacity-50">
-					<div className="h-full w-full bg-[radial-gradient(circle_at_20%_20%,rgba(255,255,255,0.08),transparent_35%),radial-gradient(circle_at_80%_0%,rgba(255,255,255,0.05),transparent_30%),radial-gradient(circle_at_50%_120%,rgba(255,255,255,0.08),transparent_45%)]" />
-				</div>
+  const router = useRouter();
+  const { isAuthenticated, hasHydrated } = useAuthStore();
 
-				<div className="relative z-10 flex">
-					<Sidebar />
-					<div className="min-h-screen flex-1">
-						<Header />
-						<main className="p-4 sm:p-6">{children}</main>
-					</div>
-				</div>
-			</div>
-		</ErrorBoundary>
-	);
+  useEffect(() => {
+    if (hasHydrated && !isAuthenticated) {
+      router.push("/auth/login");
+    }
+  }, [hasHydrated, isAuthenticated, router]);
+
+  // Show loading state while checking authentication
+  if (!hasHydrated) {
+    return (
+      <div className="min-h-screen bg-[#131313] text-[#e2e2e2] flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-2 border-[#c0c1ff] border-t-[#bcff5f] mx-auto mb-4"></div>
+          <p className="text-sm text-[#8a8a8a]">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect will happen in useEffect, so return nothing here
+  if (!isAuthenticated) {
+    return null;
+  }
+
+  return (
+    <ErrorBoundary>
+      <div className="min-h-screen bg-[#131313] text-[#e2e2e2] w-full">
+        <Sidebar />
+        <Header />
+        <main className="ml-64 pt-20 px-8 py-12">{children}</main>
+      </div>
+    </ErrorBoundary>
+  );
 }

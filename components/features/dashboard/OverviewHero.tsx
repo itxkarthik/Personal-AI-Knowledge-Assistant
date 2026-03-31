@@ -1,50 +1,39 @@
 "use client";
 
-import { motion } from "motion/react";
+export function OverviewHero() {
+  const cards = [
+    { label: "Total Notes", value: 0 },
+    { label: "Total Documents", value: 0 },
+    { label: "Quick Actions", value: 5 },
+  ];
 
-interface OverviewHeroProps {
-	noteCount: number;
-	documentCount: number;
-	quickActionCount: number;
-}
+  return (
+    <section className="rounded-2xl border border-[#464554]/20 bg-[#1f1f1f] p-6">
+      <p className="text-xs uppercase tracking-[0.25em] text-[#908fa0]">
+        Overview
+      </p>
+      <h1 className="mt-2 text-3xl font-black text-[#e2e2e2] tracking-tight">
+        Your Knowledge Hub
+      </h1>
+      <p className="mt-2 max-w-2xl text-[#c7c4d7]">
+        Keep everything in one place: notes, documents, and AI conversations.
+      </p>
 
-export function OverviewHero({
-	noteCount,
-	documentCount,
-	quickActionCount,
-}: OverviewHeroProps) {
-	const summaryCards = [
-		{ label: "Total Notes", value: noteCount },
-		{ label: "Total Documents", value: documentCount },
-		{ label: "Quick Actions", value: quickActionCount },
-	];
-
-	return (
-		<motion.section
-			className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 backdrop-blur"
-			initial={{ opacity: 0, y: 14 }}
-			animate={{ opacity: 1, y: 0 }}
-			transition={{ duration: 0.4, ease: "easeOut" }}
-		>
-			<p className="text-xs uppercase tracking-[0.25em] text-zinc-400">Overview</p>
-			<h1 className="mt-2 text-2xl font-semibold text-zinc-100">Your Knowledge Hub</h1>
-			<p className="mt-2 max-w-2xl text-zinc-300">
-				Keep everything in one place: notes, documents, and AI conversations.
-			</p>
-
-			<div className="mt-5 grid gap-3 sm:grid-cols-3">
-				{summaryCards.map((card) => (
-					<div
-						key={card.label}
-						className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
-					>
-						<p className="text-xs uppercase tracking-[0.18em] text-zinc-500">
-							{card.label}
-						</p>
-						<p className="mt-2 text-2xl font-semibold text-zinc-100">{card.value}</p>
-					</div>
-				))}
-			</div>
-		</motion.section>
-	);
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        {cards.map((card) => (
+          <div
+            key={card.label}
+            className="rounded-xl border border-[#464554]/20 bg-[#131313] p-4"
+          >
+            <p className="text-xs uppercase tracking-[0.18em] text-[#908fa0]">
+              {card.label}
+            </p>
+            <p className="mt-2 text-3xl font-black text-[#bcff5f]">
+              {card.value}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
 }

@@ -23,7 +23,7 @@ export interface UploadDocumentPayload {
 export async function listDocuments(
 	params: ListDocumentsParams = {}
 ): Promise<DocumentList> {
-	const response = await apiClient.get<DocumentList>("/documents", { params });
+	const response = await apiClient.get<DocumentList>("/documents/", { params });
 	return response.data;
 }
 

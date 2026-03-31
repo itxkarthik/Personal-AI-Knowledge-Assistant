@@ -55,3 +55,8 @@ DOCKER_*
 docker-compose.override.yml
 task.md
 walkthrough.md
+
+chat.html
+dashboard*.html
+knowle*.html
+uploads

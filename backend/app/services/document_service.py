@@ -101,18 +101,21 @@ async def upload_and_process_document(*, session: Session, current_user: User, f
 		session.flush()
 
 		if chunk_rows:
-			embeddings, embedding_model = await generate_embeddings(
-				session=session,
-				user_id=current_user.id,
-				texts=[chunk.content for chunk in chunk_rows],
-			)
-			vector_store = PgVectorStore(session=session)
-			vector_store.store_document_chunk_embeddings(
-				chunks=chunk_rows,
-				embeddings=embeddings,
-				user_id=current_user.id,
-				model=embedding_model,
-			)
+			try:
+				embeddings, embedding_model = await generate_embeddings(
+					session=session,
+					user_id=current_user.id,
+					texts=[chunk.content for chunk in chunk_rows],
+				)
+				vector_store = PgVectorStore(session=session)
+				vector_store.store_document_chunk_embeddings(
+					chunks=chunk_rows,
+					embeddings=embeddings,
+					user_id=current_user.id,
+					model=embedding_model,
+				)
+			except Exception as e:
+				logger.warning(f"Failed to generate embeddings: {str(e)}. Document stored without embeddings.")
 
 		session.add(document)
 		session.commit()
