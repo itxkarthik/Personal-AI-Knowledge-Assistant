@@ -11,6 +11,7 @@ import {
 import { NoteSidebar } from "@/components/features/notes/NoteSidebar";
 import { useAutoSave } from "@/lib/hooks/useAutoSave";
 import { useNotes } from "@/lib/hooks/useNotes";
+import type { NoteResponse } from "@/types";
 
 function stripHtmlTags(content: string): string {
   return content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
@@ -21,6 +22,20 @@ type DraftState = {
   content: string;
   tagIds: number[];
 };
+
+const EMPTY_DRAFT: DraftState = {
+  title: "",
+  content: "<p></p>",
+  tagIds: [],
+};
+
+function draftFromNote(note: NoteResponse): DraftState {
+  return {
+    title: note.title,
+    content: note.content || "<p></p>",
+    tagIds: note.tag_ids ?? [],
+  };
+}
 
 export default function NotesPage() {
   const {
@@ -46,29 +61,38 @@ export default function NotesPage() {
     setViewMode,
   } = useNotes();
 
-  const [draft, setDraft] = useState<DraftState>({
-    title: "",
-    content: "<p></p>",
-    tagIds: [],
-  });
+  const [draftsByNoteId, setDraftsByNoteId] = useState<Record<number, DraftState>>({});
 
-  useEffect(() => {
+  const draft = useMemo(() => {
     if (!selectedNote) {
-      return;
+      return EMPTY_DRAFT;
     }
 
-    setDraft({
-      title: selectedNote.title,
-      content: selectedNote.content || "<p></p>",
-      tagIds: selectedNote.tag_ids ?? [],
-    });
-  }, [selectedNote]);
+    return draftsByNoteId[selectedNote.id] ?? draftFromNote(selectedNote);
+  }, [draftsByNoteId, selectedNote]);
 
   useEffect(() => {
     if (!selectedNote && notes.length > 0) {
       setSelectedNote(notes[0]);
     }
   }, [notes, selectedNote, setSelectedNote]);
+
+  const setDraftForSelectedNote = useCallback(
+    (updater: (prev: DraftState) => DraftState) => {
+      if (!selectedNote) {
+        return;
+      }
+
+      setDraftsByNoteId((prev) => {
+        const current = prev[selectedNote.id] ?? draftFromNote(selectedNote);
+        return {
+          ...prev,
+          [selectedNote.id]: updater(current),
+        };
+      });
+    },
+    [selectedNote]
+  );
 
   const saveDraft = useCallback(
     async (value: DraftState) => {
@@ -302,10 +326,14 @@ export default function NotesPage() {
           isSaving={isSavingState}
           lastSavedAt={lastSavedAt}
           autoSaveError={autoSaveError}
-          onTitleChange={(title) => setDraft((prev) => ({ ...prev, title }))}
-          onContentChange={(content) => setDraft((prev) => ({ ...prev, content }))}
+          onTitleChange={(title) => {
+            setDraftForSelectedNote((prev) => ({ ...prev, title }));
+          }}
+          onContentChange={(content) => {
+            setDraftForSelectedNote((prev) => ({ ...prev, content }));
+          }}
           onToggleTag={(tagId) => {
-            setDraft((prev) => {
+            setDraftForSelectedNote((prev) => {
               const exists = prev.tagIds.includes(tagId);
               return {
                 ...prev,

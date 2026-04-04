@@ -8,7 +8,7 @@ import { Search, Bell, Settings, User, LogOut } from "lucide-react";
 
 export function Header() {
   const router = useRouter();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   return (
