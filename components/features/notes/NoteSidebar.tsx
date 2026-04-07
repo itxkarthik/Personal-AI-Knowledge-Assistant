@@ -27,7 +27,7 @@ export function NoteSidebar({
 	onCreateTag,
 }: NoteSidebarProps) {
 	return (
-		<aside className="space-y-6 rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4">
+		<aside className="space-y-6 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 backdrop-blur">
 			<section>
 				<div className="mb-3 flex items-center justify-between">
 					<p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Folders</p>
@@ -47,8 +47,8 @@ export function NoteSidebar({
 						className={cn(
 							"flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition",
 							selectedFolderId === null
-								? "bg-[#141f38] text-[#c7d4ff]"
-								: "text-zinc-300 hover:bg-[#141f38]"
+								? "bg-zinc-800 text-zinc-100"
+								: "text-zinc-300 hover:bg-zinc-800"
 						)}
 					>
 						<FolderOpen className="h-4 w-4" />
@@ -62,8 +62,8 @@ export function NoteSidebar({
 							className={cn(
 								"flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm transition",
 								selectedFolderId === folder.id
-									? "bg-[#141f38] text-[#c7d4ff]"
-									: "text-zinc-300 hover:bg-[#141f38]"
+									? "bg-zinc-800 text-zinc-100"
+									: "text-zinc-300 hover:bg-zinc-800"
 							)}
 						>
 							<FolderOpen className="h-4 w-4" />
@@ -92,7 +92,7 @@ export function NoteSidebar({
 						className={cn(
 							"rounded-full border px-2.5 py-1 text-xs uppercase tracking-wider transition",
 							selectedTagId === null
-								? "border-[#94aaff]/40 bg-[#94aaff]/10 text-[#c7d4ff]"
+								? "border-zinc-500 bg-zinc-800 text-zinc-100"
 								: "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500"
 						)}
 					>
@@ -106,7 +106,7 @@ export function NoteSidebar({
 							className={cn(
 								"inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs uppercase tracking-wider transition",
 								selectedTagId === tag.id
-									? "border-[#94aaff]/40 bg-[#94aaff]/10 text-[#c7d4ff]"
+									? "border-zinc-500 bg-zinc-800 text-zinc-100"
 									: "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500"
 							)}
 						>

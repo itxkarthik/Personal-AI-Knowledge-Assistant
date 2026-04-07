@@ -62,10 +62,10 @@ export default function SearchPage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4">
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 backdrop-blur">
         <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Discovery</p>
-        <h1 className="mt-2 text-2xl font-semibold text-[#dee5ff]">Global Search</h1>
-        <p className="mt-1 text-sm text-zinc-400">
+        <h1 className="mt-2 text-2xl font-semibold text-zinc-100">Global Search</h1>
+        <p className="mt-1 text-sm text-zinc-300">
           Find matching context across documents, notes, and chat sessions.
         </p>
 

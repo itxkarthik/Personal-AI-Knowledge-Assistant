@@ -33,7 +33,7 @@ export function SaveAsNote({
 	const effectiveTitle = hasEditedTitle ? title : defaultTitle ?? "";
 
 	return (
-		<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-3">
+		<section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 backdrop-blur">
 			<div className="flex items-center justify-between gap-2">
 				<div>
 					<p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Utilities</p>
@@ -42,7 +42,7 @@ export function SaveAsNote({
 				<button
 					type="button"
 					onClick={() => setIsOpen((current) => !current)}
-					className="inline-flex items-center gap-2 rounded-lg border border-[#4f5a8f] bg-[#18233f] px-3 py-2 text-xs text-[#dbe3ff] transition hover:border-[#94aaff]/45"
+					className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 transition hover:border-zinc-500"
 				>
 					<NotebookPen className="h-3.5 w-3.5" />
 					Save as Note
@@ -79,13 +79,13 @@ export function SaveAsNote({
 							setTitle(event.target.value);
 						}}
 						placeholder="Note title"
-						className="w-full rounded-lg border border-zinc-700 bg-[#091328] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-[#94aaff]/40 focus:outline-none"
+						className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
 					/>
 
 					<select
 						value={folderId}
 						onChange={(event) => setFolderId(event.target.value)}
-						className="w-full rounded-lg border border-zinc-700 bg-[#091328] px-3 py-2 text-sm text-zinc-100 focus:border-[#94aaff]/40 focus:outline-none"
+						className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-zinc-500 focus:outline-none"
 					>
 						<option value="">No folder</option>
 						{folders.map((folder) => (
@@ -98,14 +98,14 @@ export function SaveAsNote({
 					<button
 						type="submit"
 						disabled={isSaving}
-						className="inline-flex items-center gap-2 rounded-lg border border-[#4f5a8f] bg-[#18233f] px-3 py-2 text-xs text-[#dbe3ff] transition hover:border-[#94aaff]/45 disabled:cursor-not-allowed disabled:opacity-60"
+						className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-xs text-zinc-100 transition hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
 					>
 						{isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <NotebookPen className="h-3.5 w-3.5" />}
 						Save Conversation
 					</button>
 
 					{statusMessage ? (
-						<p className="flex items-center gap-1.5 text-xs text-emerald-300">
+						<p className="flex items-center gap-1.5 text-xs text-zinc-300">
 							<CheckCircle2 className="h-3.5 w-3.5" />
 							{statusMessage}
 						</p>

@@ -35,9 +35,9 @@ interface NoteTemplatesProps {
 
 export function NoteTemplates({ onUseTemplate, templates = DEFAULT_NOTE_TEMPLATES }: NoteTemplatesProps) {
 	return (
-		<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4">
+		<section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 backdrop-blur">
 			<div className="mb-3 flex items-center gap-2">
-				<LayoutTemplate className="h-4 w-4 text-[#94aaff]" />
+				<LayoutTemplate className="h-4 w-4 text-zinc-300" />
 				<p className="text-xs uppercase tracking-[0.2em] text-zinc-400">Templates</p>
 			</div>
 			<div className="grid gap-3 md:grid-cols-3">
@@ -46,11 +46,11 @@ export function NoteTemplates({ onUseTemplate, templates = DEFAULT_NOTE_TEMPLATE
 						key={template.id}
 						type="button"
 						onClick={() => onUseTemplate(template)}
-						className="group rounded-lg border border-zinc-800 bg-[#091328] p-3 text-left transition hover:border-[#40485d] hover:bg-[#141f38]"
+						className="group rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-left transition hover:border-zinc-600 hover:bg-zinc-900"
 					>
 						<div className="flex items-center justify-between">
 							<p className="text-sm font-semibold text-zinc-100">{template.name}</p>
-							<FilePlus2 className="h-4 w-4 text-zinc-500 transition group-hover:text-[#94aaff]" />
+							<FilePlus2 className="h-4 w-4 text-zinc-500 transition group-hover:text-zinc-300" />
 						</div>
 						<p className="mt-1 text-xs text-zinc-400">{template.description}</p>
 						<div className="mt-2 flex flex-wrap gap-1">

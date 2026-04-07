@@ -48,7 +48,7 @@ export function SearchResults({
 				{Array.from({ length: 8 }).map((_, index) => (
 					<div
 						key={index}
-						className="h-20 animate-pulse rounded-xl border border-zinc-800 bg-[#0f1930]/80"
+						className="h-20 animate-pulse rounded-xl border border-zinc-800 bg-zinc-900/70"
 					/>
 				))}
 			</section>
@@ -57,7 +57,7 @@ export function SearchResults({
 
 	if (!query.trim()) {
 		return (
-			<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-5 text-sm text-zinc-400">
+			<section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 text-sm text-zinc-400">
 				Run a search to scan documents, notes, and chats in one place.
 			</section>
 		);
@@ -65,7 +65,7 @@ export function SearchResults({
 
 	if (results.length === 0) {
 		return (
-			<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-5 text-sm text-zinc-400">
+			<section className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 text-sm text-zinc-400">
 				No results found for {query}.
 			</section>
 		);
@@ -89,7 +89,7 @@ export function SearchResults({
 					<Link
 						key={`${result.entity_type}-${result.id}-${result.updated_at ?? ""}`}
 						href={href}
-						className="block rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4 transition hover:border-zinc-600"
+						className="block rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 transition hover:border-zinc-600"
 					>
 						<div className="flex items-start justify-between gap-3">
 							<div className="min-w-0">

@@ -23,8 +23,8 @@ export function ChatMessage({ message, isStreaming = false }: ChatMessageProps) 
 			<div
 				className={`max-w-[85%] rounded-xl border px-3 py-2 md:max-w-[78%] ${
 					isUser
-						? "border-[#5850a7] bg-[#1e1d38] text-zinc-100"
-						: "border-zinc-700 bg-[#111926] text-zinc-100"
+						? "border-zinc-600 bg-zinc-800 text-zinc-100"
+						: "border-zinc-700 bg-zinc-950 text-zinc-100"
 				}`}
 			>
 				<div className="mb-1.5 flex items-center justify-between gap-3 text-[10px] uppercase tracking-[0.14em]">

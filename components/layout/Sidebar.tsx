@@ -32,6 +32,7 @@ const navItems = [
     label: "Knowledge Base",
     icon: "database",
   },
+  { href: "/dashboard/documents", label: "Documents", icon: "description" },
   { href: "/dashboard/notes", label: "Notes", icon: "description" },
   { href: "/dashboard/chat", label: "Chat Assistant", icon: "smart_toy" },
   { href: "/dashboard/search", label: "Analytics", icon: "monitoring" },

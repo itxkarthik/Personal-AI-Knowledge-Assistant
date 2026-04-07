@@ -173,11 +173,11 @@ export default function NotesPage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4">
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 backdrop-blur">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Obsidian Engine</p>
-            <h1 className="mt-2 text-2xl font-semibold text-[#dee5ff]">Notes</h1>
+            <p className="text-xs uppercase tracking-[0.24em] text-zinc-500">Notes</p>
+            <h1 className="mt-2 text-2xl font-semibold text-zinc-100">Notes</h1>
             <p className="mt-1 text-sm text-zinc-400">
               High-signal capture surface for research, meetings, and memory.
             </p>
@@ -192,7 +192,7 @@ export default function NotesPage() {
               onClick={() => {
                 void handleCreateNote();
               }}
-              className="inline-flex items-center gap-2 rounded-lg border border-[#40485d] bg-[#141f38] px-3 py-2 text-sm text-zinc-100 transition hover:border-[#94aaff]/40"
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-600 bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 transition hover:bg-zinc-200"
             >
               <Plus className="h-4 w-4" />
               New Note
@@ -202,7 +202,7 @@ export default function NotesPage() {
               onClick={() => setViewMode("grid")}
               className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
                 filters.viewMode === "grid"
-                  ? "border-[#94aaff]/40 bg-[#94aaff]/10 text-[#c7d4ff]"
+                  ? "border-zinc-500 bg-zinc-800 text-zinc-100"
                   : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
               }`}
             >
@@ -213,7 +213,7 @@ export default function NotesPage() {
               onClick={() => setViewMode("list")}
               className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
                 filters.viewMode === "list"
-                  ? "border-[#94aaff]/40 bg-[#94aaff]/10 text-[#c7d4ff]"
+                  ? "border-zinc-500 bg-zinc-800 text-zinc-100"
                   : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
               }`}
             >
@@ -229,7 +229,7 @@ export default function NotesPage() {
             value={filters.search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search title or content"
-            className="w-full rounded-lg border border-zinc-700 bg-[#091328] py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-[#94aaff]/50 focus:outline-none"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
           />
         </div>
       </section>
@@ -262,11 +262,11 @@ export default function NotesPage() {
             if (!name?.trim()) {
               return;
             }
-            void createTag({ name: name.trim(), color: "#94aaff" });
+            void createTag({ name: name.trim(), color: "#a1a1aa" });
           }}
         />
 
-        <section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-3">
+        <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 backdrop-blur">
           <p className="mb-2 text-xs uppercase tracking-[0.2em] text-zinc-500">Entries</p>
           {isLoading ? (
             <div className="space-y-2">
@@ -278,7 +278,7 @@ export default function NotesPage() {
               ))}
             </div>
           ) : notes.length === 0 ? (
-            <div className="rounded-lg border border-zinc-800 bg-[#091328] p-4 text-sm text-zinc-400">
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4 text-sm text-zinc-400">
               No notes found for the current filter.
             </div>
           ) : (
@@ -300,8 +300,8 @@ export default function NotesPage() {
                     onClick={() => setSelectedNote(note)}
                     className={`w-full rounded-lg border p-3 text-left transition ${
                       isActive
-                        ? "border-[#94aaff]/45 bg-[#141f38]"
-                        : "border-zinc-800 bg-[#091328] hover:border-zinc-600"
+                        ? "border-zinc-600 bg-zinc-800"
+                        : "border-zinc-800 bg-zinc-950 hover:border-zinc-600"
                     }`}
                   >
                     <p className="line-clamp-1 text-sm font-semibold text-zinc-100">{note.title}</p>

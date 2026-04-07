@@ -22,7 +22,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
 	};
 
 	return (
-		<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-3">
+		<section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-3 backdrop-blur">
 			<div className="flex items-end gap-2">
 				<textarea
 					value={content}
@@ -36,7 +36,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
 					rows={3}
 					disabled={disabled}
 					placeholder="Ask about your documents, notes, or chat history..."
-					className="w-full resize-none rounded-lg border border-zinc-700 bg-[#091328] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-[#94aaff]/40 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+					className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
 				/>
 
 				<button
@@ -45,7 +45,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
 						void handleSubmit();
 					}}
 					disabled={disabled || !content.trim()}
-					className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-[#4f5a8f] bg-[#18233f] text-[#dbe3ff] transition hover:border-[#94aaff]/45 disabled:cursor-not-allowed disabled:opacity-50"
+					className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-600 bg-zinc-100 text-zinc-900 transition hover:bg-zinc-200 disabled:cursor-not-allowed disabled:opacity-50"
 					aria-label="Send message"
 				>
 					{disabled ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}

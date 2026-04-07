@@ -65,7 +65,7 @@ export default function ChatSessionPage() {
 
 	if (Number.isNaN(sessionId) || sessionId <= 0) {
 		return (
-			<div className="space-y-4 rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-6">
+			<div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 backdrop-blur">
 				<p className="text-sm text-rose-300">Invalid session id.</p>
 				<Link
 					href="/dashboard/chat"
@@ -80,7 +80,7 @@ export default function ChatSessionPage() {
 
 	return (
 		<div className="space-y-4">
-			<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4">
+			<section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 backdrop-blur">
 				<div className="flex flex-wrap items-center justify-between gap-3">
 					<div>
 						<Link
@@ -90,7 +90,7 @@ export default function ChatSessionPage() {
 							<ArrowLeft className="h-3.5 w-3.5" />
 							All Sessions
 						</Link>
-						<h1 className="mt-2 text-2xl font-semibold text-[#dee5ff]">
+						<h1 className="mt-2 text-2xl font-semibold text-zinc-100">
 							{activeSession?.title || `Session ${sessionId}`}
 						</h1>
 						<p className="mt-1 text-sm text-zinc-400">
@@ -107,7 +107,7 @@ export default function ChatSessionPage() {
 			) : null}
 
 			{savedStatus ? (
-				<p className="rounded-lg border border-emerald-900/40 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+				<p className="rounded-lg border border-zinc-700 bg-zinc-900/70 p-3 text-sm text-zinc-200">
 					{savedStatus}
 				</p>
 			) : null}

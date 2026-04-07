@@ -30,14 +30,14 @@ export function SearchBar({
 					value={query}
 					onChange={(event) => onQueryChange(event.target.value)}
 					placeholder="Search across documents, notes, and chat conversations"
-					className="w-full rounded-lg border border-zinc-700 bg-[#091328] py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-[#94aaff]/40 focus:outline-none"
+					className="w-full rounded-lg border border-zinc-700 bg-zinc-950 py-2 pl-9 pr-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
 				/>
 			</div>
 
 			<button
 				type="submit"
 				disabled={isLoading || !query.trim()}
-				className="inline-flex items-center gap-2 rounded-lg border border-[#4f5a8f] bg-[#18233f] px-3 py-2 text-sm text-[#dbe3ff] transition hover:border-[#94aaff]/45 disabled:cursor-not-allowed disabled:opacity-60"
+				className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 transition hover:border-zinc-500 disabled:cursor-not-allowed disabled:opacity-60"
 			>
 				{isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
 				Search

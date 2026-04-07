@@ -39,7 +39,7 @@ export function NoteEditor({
 }: NoteEditorProps) {
 	if (!note) {
 		return (
-			<div className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-6 text-zinc-300">
+			<div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 text-zinc-300 backdrop-blur">
 				<p className="text-sm uppercase tracking-[0.16em] text-zinc-500">Editor</p>
 				<h2 className="mt-2 text-lg font-semibold text-zinc-100">No note selected</h2>
 				<p className="mt-2 text-sm text-zinc-400">
@@ -50,7 +50,7 @@ export function NoteEditor({
 	}
 
 	return (
-		<section className="rounded-xl border border-zinc-800 bg-[#0f1930]/80 p-4">
+		<section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 backdrop-blur">
 			<div className="mb-3 flex flex-wrap items-start justify-between gap-3">
 				<div className="min-w-0 flex-1">
 					<p className="text-xs uppercase tracking-[0.2em] text-zinc-500">Entry Editor</p>
@@ -59,7 +59,7 @@ export function NoteEditor({
 						value={title}
 						onChange={(event) => onTitleChange(event.target.value)}
 						placeholder="Untitled note"
-						className="mt-2 w-full rounded-lg border border-zinc-700 bg-[#091328] px-3 py-2 text-lg font-semibold text-zinc-100 placeholder:text-zinc-500 focus:border-[#94aaff]/60 focus:outline-none"
+						className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-lg font-semibold text-zinc-100 placeholder:text-zinc-500 focus:border-zinc-500 focus:outline-none"
 					/>
 				</div>
 
@@ -89,7 +89,7 @@ export function NoteEditor({
 							className={cn(
 								"rounded-full border px-2.5 py-1 text-xs uppercase tracking-wider transition",
 								active
-									? "border-[#94aaff]/40 bg-[#94aaff]/10 text-[#c7d4ff]"
+									? "border-zinc-500 bg-zinc-800 text-zinc-100"
 									: "border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-500"
 							)}
 						>
