@@ -56,7 +56,7 @@ def list_chat_sessions(
     total = len(session.exec(count_statement).all())
 
     # Apply LIMIT/OFFSET at database level
-    sessions = session.exec(statement.limit(limit).offset(skip)).all()
+    sessions = session.exec(statement.limit(limit).offset(skip)).unique().all()
     return sessions, total
 
 

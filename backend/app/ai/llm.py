@@ -81,36 +81,36 @@ class OllamaLLMProvider:
 
         return content
 
-	async def stream(
-		self,
-		*,
-		messages: Sequence[ChatMessage],
-		model: str,
-		temperature: float,
-		max_tokens: int,
-	) -> AsyncIterator[str]:
-		payload = self._build_payload(
-			messages=messages,
-			model=model,
-			temperature=temperature,
-			max_tokens=max_tokens,
-			stream=True,
-		)
+    async def stream(
+        self,
+        *,
+        messages: Sequence[ChatMessage],
+        model: str,
+        temperature: float,
+        max_tokens: int,
+    ) -> AsyncIterator[str]:
+        payload = self._build_payload(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+        )
 
-		# Use pooled HTTP client instead of creating new one per request
-		client = await get_llm_client(timeout=self.timeout_seconds)
-		async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-			response.raise_for_status()
-			async for line in response.aiter_lines():
-				if not line:
-					continue
-				data = json.loads(line)
-				message = data.get("message")
-				if not isinstance(message, dict):
-					continue
-				chunk = message.get("content")
-				if isinstance(chunk, str) and chunk:
-					yield chunk
+        # Use pooled HTTP client instead of creating new one per request
+        client = await get_llm_client(timeout=self.timeout_seconds)
+        async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
+            response.raise_for_status()
+            async for line in response.aiter_lines():
+                if not line:
+                    continue
+                data = json.loads(line)
+                message = data.get("message")
+                if not isinstance(message, dict):
+                    continue
+                chunk = message.get("content")
+                if isinstance(chunk, str) and chunk:
+                    yield chunk
 
     @staticmethod
     def _build_payload(

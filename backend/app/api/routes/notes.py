@@ -54,13 +54,15 @@ def _to_note_response(note: Notes) -> NoteResponse:
 	)
 
 
-@router.post(path="/", response_model=NoteResponse)
+@router.post(path="", response_model=NoteResponse)
+@router.post(path="/", response_model=NoteResponse, include_in_schema=False)
 def create_note_endpoint(*, session: SessionDep, current_user: CurrentUser, body: NoteCreate) -> Any:
 	note = create_note(session=session, current_user=current_user, payload=body)
 	return _to_note_response(note)
 
 
-@router.get(path="/", response_model=NoteList)
+@router.get(path="", response_model=NoteList)
+@router.get(path="/", response_model=NoteList, include_in_schema=False)
 def read_notes(
 	*,
 	session: SessionDep,
