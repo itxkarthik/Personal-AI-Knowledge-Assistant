@@ -1,6 +1,7 @@
 "use client";
 
 import { OverviewHero } from "@/components/features/dashboard/OverviewHero";
+import { StatusTerminal } from "@/components/features/dashboard/StatusTerminal";
 import {
   FileText,
   Upload,
@@ -39,15 +40,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 max-w-7xl">
-      {/* Status Terminal */}
-      <div className="fixed top-20 right-8 z-20 glass-panel border border-[#464554]/20 rounded-lg p-3 ambient-glow">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-[#bcff5f] animate-pulse"></div>
-          <div className="font-['JetBrains_Mono'] text-[10px] text-[#bcff5f] tracking-tighter">
-            ETHER_OS :: LATENCY: 12ms // SYNC: 100%
-          </div>
-        </div>
-      </div>
+      <StatusTerminal />
 
       <OverviewHero />
 

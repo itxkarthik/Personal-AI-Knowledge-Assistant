@@ -2,13 +2,12 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
+import { OfflineIndicator } from "@/components/shared/OfflineIndicator";
 import { AuthBootstrap } from "@/components/auth/AuthBootstrap";
 import "./globals.css";
+import { cn } from "@/lib/utils";
 
-const inter = Inter({
-  variable: "--font-sans",
-  subsets: ["latin"],
-});
+const inter = Inter({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
 	title: "Personal Knowledge Assistant",
@@ -22,9 +21,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", inter.variable)}>
       <body className={`${inter.variable} font-sans antialiased text-white`}>
         <AuthBootstrap />
+        <OfflineIndicator />
         <ErrorBoundary>{children}</ErrorBoundary>
       </body>
     </html>

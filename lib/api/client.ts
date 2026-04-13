@@ -3,6 +3,7 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
 import { apiConfig, tokenKeys, getTimeoutForEndpoint } from "@/config/api";
 import { useAuthStore } from "@/store/authStore";
 import { isRetryableError, retryWithExponentialBackoff, DEFAULT_RETRY_CONFIG } from "@/lib/utils/retry";
+import { requestQueue, type QueuedRequest } from "@/lib/utils/requestQueue";
 import type { ApiError } from "@/types";
 
 type RequestWithRetry = InternalAxiosRequestConfig & {
@@ -68,6 +69,25 @@ const refreshClient = axios.create({
 });
 
 apiClient.interceptors.request.use((config) => {
+	// Queue requests if offline (for POST, PUT, PATCH)
+	const isOnline = typeof navigator !== "undefined" && navigator.onLine;
+	const method = (config.method ?? "get").toUpperCase();
+	
+	if (!isOnline && ["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+		// Queue the request for later
+		requestQueue.add(method, config.url || "", {
+			data: config.data,
+			params: config.params,
+		});
+		
+		return Promise.reject(
+			new APIRequestError("Request queued - you are currently offline", {
+				statusCode: 0,
+				errorCode: "OFFLINE",
+			})
+		);
+	}
+
 	// Apply endpoint-specific timeout based on method and URL
 	if (config.url && config.method) {
 		const timeout = getTimeoutForEndpoint(config.method, config.url);
@@ -85,7 +105,6 @@ apiClient.interceptors.request.use((config) => {
 		}
 	}
 
-	const method = (config.method ?? "get").toUpperCase();
 	if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
 		return config;
 	}
@@ -170,3 +189,30 @@ apiClient.interceptors.response.use(
 		);
 	}
 );
+
+export async function processOfflineQueue(): Promise<{ succeeded: number; failed: number }> {
+	if (requestQueue.isEmpty()) {
+		return { succeeded: 0, failed: 0 };
+	}
+
+	let succeeded = 0;
+	let failed = 0;
+
+	await requestQueue.execute(async (req: QueuedRequest) => {
+		try {
+			await apiClient({
+				method: req.method.toLowerCase(),
+				url: req.url,
+				data: req.config.data,
+				params: req.config.params,
+			});
+			succeeded++;
+			return true;
+		} catch {
+			failed++;
+			return false;
+		}
+	});
+
+	return { succeeded, failed };
+}
