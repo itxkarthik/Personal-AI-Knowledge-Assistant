@@ -19,6 +19,7 @@ from app.api.main import api_router
 
 # Rate Limiter
 from app.core.rate_limit import limiter
+from app.api.routes.test import router as test_router
 
 logger = logging.getLogger(__name__)
 
@@ -154,3 +155,6 @@ async def health_ready():
 
 # API router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Test routes (for timeout verification and testing)
+app.include_router(test_router, prefix=settings.API_V1_STR)
