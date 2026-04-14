@@ -4,6 +4,7 @@ from sqlalchemy import desc
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
+from pydantic import ConfigDict
 
 if TYPE_CHECKING:
     from .user import User
@@ -50,6 +51,7 @@ class ChatMessages(TimestampMixin, SQLModel, table=True):
     __table_args__ = (
         Index("ix_chat_messages_session_created", "session_id", desc("created_at")),
     )
+    model_config = ConfigDict(protected_namespaces=())
     id: int | None = Field(default=None, primary_key=True)
     session_id: int | None = Field(foreign_key="chat_sessions.id", nullable=False)
     role: ChatRole = Field(nullable=False, max_length=20)
