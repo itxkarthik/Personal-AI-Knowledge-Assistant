@@ -15,6 +15,7 @@ from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.models.user import Message, Token, UserPublic, TokenPayload
 from app.core.rate_limit import limiter
 from app.schemas.error import StandardErrorResponse
+from app.services import auth_service
 
 router = APIRouter(tags=["login"])
 
@@ -105,24 +106,13 @@ def login_access_token(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
 
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        subject=user.id, expires_delta=access_token_expires
-    )
-
-    # Issue refresh token
-    raw_refresh_token = security.generate_refresh_token()
-    crud.create_refresh_token(
-        session=session,
-        user_id=user.id,
-        raw_token=raw_refresh_token,
-        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-    )
-    _set_auth_cookies(response, access_token=access_token, refresh_token=raw_refresh_token)
+    # Use auth_service to create token pair
+    token_pair = auth_service.create_token_pair(session=session, user=user)
+    _set_auth_cookies(response, access_token=token_pair.access_token, refresh_token=token_pair.refresh_token)
 
     return Token(
-        access_token=access_token,
-        refresh_token=raw_refresh_token,
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
     )
 
 
@@ -152,33 +142,46 @@ def refresh_access_token(
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Missing refresh token")
 
-    hashed = security.hash_refresh_token(refresh_token)
-    db_token = crud.get_refresh_token_by_hash(session=session, hashed_token=hashed)
+    # Get user from token or request context
+    user_id = None
+    try:
+        # Try to get user_id from current token if available
+        token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE_NAME)
+        if token:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[security.ALGORITHM])
+            user_id = payload.get("sub")
+    except Exception:
+        pass
 
-    if not db_token:
-        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    # Use auth_service to refresh with token rotation
+    try:
+        if user_id:
+            token_pair = auth_service.refresh_access_token_from_refresh(
+                session=session,
+                user_id=int(user_id),
+                refresh_token=refresh_token
+            )
+        else:
+            # Lookup user by refresh token without knowing user_id first
+            hashed = security.hash_refresh_token(refresh_token)
+            db_token = crud.get_refresh_token_by_hash(session=session, hashed_token=hashed)
+            if not db_token:
+                raise ValueError("Invalid or expired refresh token")
+            token_pair = auth_service.refresh_access_token_from_refresh(
+                session=session,
+                user_id=db_token.user_id,
+                refresh_token=refresh_token
+            )
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail="Invalid refresh token")
 
-    # Revoke old refresh token (single-use rotation)
-    crud.revoke_refresh_token(session=session, db_token=db_token)
-
-    # Issue new tokens
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        subject=db_token.user_id, expires_delta=access_token_expires
-    )
-
-    raw_refresh_token = security.generate_refresh_token()
-    crud.create_refresh_token(
-        session=session,
-        user_id=db_token.user_id,
-        raw_token=raw_refresh_token,
-        expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
-    )
-    _set_auth_cookies(response, access_token=access_token, refresh_token=raw_refresh_token)
+    _set_auth_cookies(response, access_token=token_pair.access_token, refresh_token=token_pair.refresh_token)
 
     return Token(
-        access_token=access_token,
-        refresh_token=raw_refresh_token,
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
     )
 
 
@@ -205,13 +208,13 @@ def logout(response: Response, session: SessionDep, token: TokenDep, current_use
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid token")
 
-    # Blacklist the access token so it can't be reused
+    # Use auth_service to revoke tokens
     if token_data.jti:
         expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
-        crud.blacklist_token(session=session, jti=token_data.jti, expires_at=expires_at)
-
+        auth_service.revoke_access_token(session=session, jti=token_data.jti, expires_at=expires_at)
+    
     # Revoke all refresh tokens for this user
-    crud.revoke_all_user_refresh_tokens(session=session, user_id=current_user.id)
+    auth_service.revoke_all_user_tokens(session=session, user_id=current_user.id)
     _clear_auth_cookies(response)
 
     return Message(message="Successfully logged out")
@@ -227,3 +230,148 @@ def logout(response: Response, session: SessionDep, token: TokenDep, current_use
 )
 def test_token(current_user: CurrentUser) -> Any:
     return current_user
+
+
+class RevokeTokenRequest(BaseModel):
+    """Request model for explicit token revocation."""
+    reason: str | None = None  # Optional reason for audit logging
+
+
+class TokenInfoResponse(BaseModel):
+    """Response model for token information."""
+    user_id: int
+    jti: str | None
+    expires_at: datetime | None
+    is_blacklisted: bool | None
+    is_expired: bool | None
+    issued_at: datetime | None
+
+
+@router.post(
+	path="/auth/revoke-token",
+	response_model=Message,
+	responses={
+		400: {"model": StandardErrorResponse, "description": "Invalid token"},
+		401: {"model": StandardErrorResponse, "description": "Authentication required"},
+		500: {"model": StandardErrorResponse, "description": "Internal server error"},
+	},
+)
+def revoke_current_token(
+	response: Response,
+	session: SessionDep,
+	token: TokenDep,
+	current_user: CurrentUser,
+	body: RevokeTokenRequest = RevokeTokenRequest()
+) -> Message:
+	"""
+	Explicitly revoke the current access token.
+	
+	Used for security-conscious logout or when revoking a specific token
+	while keeping other sessions active.
+	
+	Args:
+		body: Optional reason for audit logging (not stored, just for audit trail)
+		
+	Returns:
+		Success message
+	"""
+	# Decode token to get jti + expiry
+	try:
+		payload = jwt.decode(
+			token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+		)
+		token_data = TokenPayload(**payload)
+	except Exception:
+		raise HTTPException(status_code=400, detail="Invalid token")
+
+	# Revoke the access token
+	if token_data.jti:
+		expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+		auth_service.revoke_access_token(session=session, jti=token_data.jti, expires_at=expires_at)
+
+	# Clear auth cookies
+	_clear_auth_cookies(response)
+
+	return Message(message="Token revoked successfully")
+
+
+@router.post(
+	path="/auth/revoke-all",
+	response_model=Message,
+	responses={
+		401: {"model": StandardErrorResponse, "description": "Authentication required"},
+		500: {"model": StandardErrorResponse, "description": "Internal server error"},
+	},
+)
+def revoke_all_user_tokens_endpoint(
+	response: Response,
+	session: SessionDep,
+	current_user: CurrentUser
+) -> Message:
+	"""
+	Revoke ALL tokens for the current user (logout from all devices).
+	
+	Used for:
+	- Security incident response
+	- Account password change
+	- User explicitly requesting logout everywhere
+	
+	All existing sessions become invalid immediately.
+	User must login again.
+	
+	Returns:
+		Success message
+	"""
+	# Revoke all tokens
+	auth_service.revoke_all_user_tokens(session=session, user_id=current_user.id)
+	_clear_auth_cookies(response)
+
+	return Message(message="All tokens revoked successfully")
+
+
+@router.get(
+	path="/auth/token-info",
+	response_model=TokenInfoResponse,
+	responses={
+		400: {"model": StandardErrorResponse, "description": "Invalid token"},
+		401: {"model": StandardErrorResponse, "description": "Authentication required"},
+		500: {"model": StandardErrorResponse, "description": "Internal server error"},
+	},
+)
+def get_token_info_endpoint(
+	session: SessionDep,
+	token: TokenDep,
+	current_user: CurrentUser
+) -> TokenInfoResponse:
+	"""
+	Get information about the current access token.
+	
+	Useful for debugging token lifecycle and checking token status.
+	
+	Returns:
+		TokenInfoResponse with:
+		- user_id: User ID from token
+		- jti: JWT ID for revocation tracking
+		- expires_at: Token expiration timestamp
+		- is_blacklisted: Whether token has been revoked
+		- is_expired: Whether token has expired
+		- issued_at: Token issue timestamp
+	"""
+	try:
+		payload = jwt.decode(
+			token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+		)
+	except Exception:
+		raise HTTPException(status_code=400, detail="Invalid token")
+
+	# Get token info
+	token_info = auth_service.get_token_info(session=session, token_payload=payload)
+
+	return TokenInfoResponse(
+		user_id=token_info["user_id"],
+		jti=token_info["jti"],
+		expires_at=token_info["expires_at"],
+		is_blacklisted=token_info["is_blacklisted"],
+		is_expired=token_info["is_expired"],
+		issued_at=datetime.fromtimestamp(payload.get("iat", 0), tz=timezone.utc) if payload.get("iat") else None
+	)

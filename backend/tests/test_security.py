@@ -264,10 +264,6 @@ class TestCSRFProtection:
         assert response.status_code == 200
 
 
-# ============================================================================
-# COMBINED SECURITY TESTS
-# ============================================================================
-
 class TestCombinedSecurity:
     """Test combined input validation and CSRF protection."""
     
