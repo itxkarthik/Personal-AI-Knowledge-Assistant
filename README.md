@@ -35,7 +35,7 @@ Contribute: Open issues and pull requests in this repository
 
 - Docker Desktop (or Docker Engine + Docker Compose)
 - Node.js 20+
-- Python 3.11+
+- Python 3.12+
 
 ### Option 1: Run with Docker Compose (recommended)
 
@@ -89,6 +89,54 @@ Then open http://localhost:8080.
 
 - Environment variables are read from `.env` and `.env.docker` depending on run mode.
 - Current implementation includes core auth/data models with additional feature modules in progress.
+
+## Development Workflow
+
+### Code Quality & Type Safety
+
+This project uses automated tooling to maintain code quality and type safety:
+
+#### Pre-commit Hooks
+
+Automatic code validation runs before every commit:
+
+```bash
+# Install pre-commit (one time)
+pip install pre-commit
+pre-commit install
+
+# Hooks run automatically on git commit:
+# - Black: Python code formatting
+# - isort: Import sorting
+# - Ruff: Fast Python linting with auto-fix
+# - Prettier: JavaScript/TypeScript/JSON formatting
+# - Mixed line ending detection
+```
+
+#### Error Handling
+
+The application includes comprehensive error boundaries for better UX:
+
+- **ErrorBoundary**: Catches React rendering errors with recovery options
+- **Error Types**: Automatic detection of render, API, auth, network, and permission errors
+- **Error Reporting**: Client-side errors are reported to `/api/errors` endpoint
+- **Mobile Responsive**: Error UI adapts to all screen sizes
+
+### Running Locally with Code Quality
+
+```bash
+# Backend with type checking
+cd backend
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+pre-commit install
+python run.py
+
+# Frontend in another terminal
+pnpm install
+pnpm dev
+```
 
 ## Contributing
 
