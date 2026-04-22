@@ -117,3 +117,5 @@ class DocumentContentResponse(BaseModel):
 class DocumentList(BaseModel):
     data: list[DocumentResponse]
     count: int
+    page_size: int
+    has_more: bool

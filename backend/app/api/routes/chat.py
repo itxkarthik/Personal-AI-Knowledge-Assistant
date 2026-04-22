@@ -22,6 +22,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 class ChatSessionListResponse(BaseModel):
     data: list[ChatResponse]
     count: int
+    page_size: int
+    has_more: bool
 
 
 class ConvertChatToNoteRequest(BaseModel):
@@ -121,7 +123,13 @@ def list_chat_sessions_endpoint(
         skip=skip,
         limit=limit,
     )
-    return ChatSessionListResponse(data=[_to_chat_response(item) for item in sessions], count=count)
+    has_more = (skip + limit) < count
+    return ChatSessionListResponse(
+        data=[_to_chat_response(item) for item in sessions],
+        count=count,
+        page_size=limit,
+        has_more=has_more,
+    )
 
 
 @router.get(

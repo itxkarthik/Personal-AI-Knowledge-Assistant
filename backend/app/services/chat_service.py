@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 
 from fastapi import HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, col, select
 
@@ -38,25 +39,29 @@ def list_chat_sessions(
     List chat sessions with efficient pagination and eager message loading.
 
     Performance improvements:
+    - Uses SQL COUNT(*) for efficient counting (not fetching all rows)
     - Uses database LIMIT/OFFSET instead of in-memory slicing
     - Eagerly loads messages with joinedload to prevent N+1 queries
-    - For 20 sessions with 10 messages each: 21 queries → 1 query (95% reduction)
     """
+    # Get total count using efficient SQL COUNT
+    count_statement = (
+        select(func.count()).select_from(ChatSession).where(ChatSession.user_id == current_user.id)
+    )
+    total_count = session.exec(count_statement).one() or 0
+
+    # Fetch chat sessions with eager-loaded messages and pagination
     statement = (
         select(ChatSession)
         .where(ChatSession.user_id == current_user.id)
         .order_by(col(ChatSession.last_message_at).desc())
         # Eagerly load messages to prevent N+1 query issue when accessing session.messages
         .options(joinedload(ChatSession.messages))
+        .limit(limit)
+        .offset(skip)
     )
 
-    # Get total count (before LIMIT/OFFSET)
-    count_statement = select(ChatSession).where(ChatSession.user_id == current_user.id)
-    total = len(session.exec(count_statement).all())
-
-    # Apply LIMIT/OFFSET at database level
-    sessions = session.exec(statement.limit(limit).offset(skip)).unique().all()
-    return sessions, total
+    sessions = session.exec(statement).unique().all()
+    return sessions, total_count
 
 
 def send_message_and_get_response(
@@ -177,10 +182,12 @@ def get_chat_session_by_id(
     *, session: Session, current_user: User, chat_session_id: int
 ) -> ChatSession:
     chat_session = session.exec(
-        select(ChatSession).where(
+        select(ChatSession)
+        .where(
             ChatSession.id == chat_session_id,
             ChatSession.user_id == current_user.id,
         )
+        .options(joinedload(ChatSession.messages))
     ).first()
     if not chat_session:
         raise HTTPException(status_code=404, detail="Chat session not found")

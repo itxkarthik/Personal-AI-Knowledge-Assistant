@@ -178,3 +178,5 @@ class NoteResponse(BaseModel):
 class NoteList(BaseModel):
     data: list[NoteResponse]
     count: int
+    page_size: int
+    has_more: bool

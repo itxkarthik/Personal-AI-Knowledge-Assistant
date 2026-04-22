@@ -10,6 +10,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.api.main import api_router
 from app.api.routes.test import router as test_router
+from app.core.cache_middleware import ETagAndCacheMiddleware
 from app.core.config import settings
 from app.core.csrf import CSRFMiddleware
 from app.core.database import create_db_and_tables_with_retry, test_db_connection
@@ -89,7 +90,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 # 5. Max Request Body Size — reject oversized payloads early
 app.add_middleware(MaxRequestBodySizeMiddleware)
 
-# 6. CORS — locked down to specific methods and headers
+# 6. ETag and Cache Control — adds ETag and cache headers for client-side caching
+app.add_middleware(ETagAndCacheMiddleware)
+
+# 7. CORS — locked down to specific methods and headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.all_cors_origins,

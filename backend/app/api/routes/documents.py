@@ -90,7 +90,8 @@ def read_documents(
         skip=skip,
         limit=limit,
     )
-    return DocumentList(data=documents, count=total)
+    has_more = (skip + limit) < total
+    return DocumentList(data=documents, count=total, page_size=limit, has_more=has_more)
 
 
 @router.get(

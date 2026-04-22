@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
+from sqlalchemy import func
 from sqlmodel import Session, col, or_, select
 
 from app.ai.embeddings import generate_embeddings
@@ -181,43 +182,33 @@ def list_documents(
     List documents with efficient pagination.
 
     Performance improvements:
-    - Uses database LIMIT/OFFSET instead of in-memory slicing (prevents loading entire result set)
+    - Uses SQL COUNT(*) for efficient counting (not fetching all rows)
+    - Uses database LIMIT/OFFSET instead of in-memory slicing
     """
-    base_statement = select(Document).where(
+    base_where = [
         Document.user_id == current_user.id,
         Document.is_deleted == False,
-    )
+    ]
 
     if search:
         like_query = f"%{search}%"
-        base_statement = base_statement.where(
+        base_where.append(
             or_(
                 col(Document.title).ilike(like_query),
                 col(Document.content).ilike(like_query),
             )
         )
 
-    # Order by updated_at descending
-    base_statement = base_statement.order_by(col(Document.updated_at).desc())
+    # Get total count using efficient SQL COUNT
+    count_statement = select(func.count()).select_from(Document).where(*base_where)
+    total_count = session.exec(count_statement).one() or 0
 
-    # Get total count (before LIMIT/OFFSET)
-    count_statement = select(Document).where(
-        Document.user_id == current_user.id,
-        Document.is_deleted == False,
-    )
-    if search:
-        like_query = f"%{search}%"
-        count_statement = count_statement.where(
-            or_(
-                col(Document.title).ilike(like_query),
-                col(Document.content).ilike(like_query),
-            )
-        )
-    total = len(session.exec(count_statement).all())
+    # Fetch documents with pagination
+    statement = select(Document).where(*base_where).order_by(col(Document.updated_at).desc())
+    statement = statement.limit(limit).offset(skip)
 
-    # Apply LIMIT/OFFSET at database level
-    data = session.exec(base_statement.limit(limit).offset(skip)).all()
-    return data, total
+    data = session.exec(statement).all()
+    return data, total_count
 
 
 def get_document_by_id(*, session: Session, current_user: User, document_id: int) -> Document:

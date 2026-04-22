@@ -101,7 +101,13 @@ def read_notes(
         skip=skip,
         limit=limit,
     )
-    return NoteList(data=[_to_note_response(note) for note in notes], count=total)
+    has_more = (skip + limit) < total
+    return NoteList(
+        data=[_to_note_response(note) for note in notes],
+        count=total,
+        page_size=limit,
+        has_more=has_more,
+    )
 
 
 @router.get(
