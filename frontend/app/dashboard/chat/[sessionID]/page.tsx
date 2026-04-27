@@ -13,13 +13,13 @@ import { useChat } from "@/lib/hooks/useChat";
 import type { NoteFolder } from "@/types";
 
 export default function ChatSessionPage() {
-	const params = useParams<{ sessionId: string }>();
+	const params = useParams<{ sessionID: string }>();
 	const [folders, setFolders] = useState<NoteFolder[]>([]);
 	const [savedStatus, setSavedStatus] = useState<string | null>(null);
 
-	const rawSessionId = Array.isArray(params.sessionId)
-		? params.sessionId[0]
-		: params.sessionId;
+	const rawSessionId = Array.isArray(params.sessionID)
+		? params.sessionID[0]
+		: params.sessionID;
 	const sessionId = Number(rawSessionId);
 
 	const {

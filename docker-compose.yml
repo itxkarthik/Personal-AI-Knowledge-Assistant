@@ -8,7 +8,9 @@ services:
         NEXT_PUBLIC_API_URL: /api/v1
     container_name: pka-frontend
     environment:
+      # Relative path for browser-side requests (proxied by Next.js)
       NEXT_PUBLIC_API_URL: /api/v1
+      # Backend URL for Next.js server-side rewrites (internal Docker network)
       BACKEND_URL: http://backend:3000
     ports:
       - "8080:3000"

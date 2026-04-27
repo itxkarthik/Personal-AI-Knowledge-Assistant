@@ -13,7 +13,8 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 
 # Browser-side API base URL baked into the frontend build
-ARG NEXT_PUBLIC_API_URL=http://127.0.0.1:3000/api/v1
+# Use relative path for browser requests (will proxy to backend)
+ARG NEXT_PUBLIC_API_URL=/api/v1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
 
