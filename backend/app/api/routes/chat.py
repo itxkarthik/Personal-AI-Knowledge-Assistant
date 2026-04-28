@@ -1,8 +1,5 @@
 from typing import Any
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
-
 from app.api.deps import CurrentUser, SessionDep
 from app.models.chat import ChatMessages, ChatSession
 from app.schemas.chat import ChatCreate, ChatMessageCreate, ChatMessageResponse, ChatResponse
@@ -14,7 +11,11 @@ from app.services.chat_service import (
     get_chat_session_by_id,
     list_chat_sessions,
     send_message_and_get_response,
+    stream_message_and_get_response,
 )
+from fastapi import APIRouter, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -179,6 +180,52 @@ def send_message_endpoint(
         payload=body,
     )
     return _to_chat_message_response(assistant_message)
+
+
+@router.post(
+    path="/sessions/{session_id}/messages/stream",
+    responses={
+        200: {"description": "Server-Sent Events stream of chat response"},
+        400: {"model": StandardErrorResponse, "description": "Validation error"},
+        401: {"model": StandardErrorResponse, "description": "Authentication required"},
+        403: {"model": StandardErrorResponse, "description": "Access denied"},
+        404: {"model": StandardErrorResponse, "description": "Chat session not found"},
+        500: {"model": StandardErrorResponse, "description": "Internal server error"},
+        503: {"model": StandardErrorResponse, "description": "LLM service unavailable"},
+    },
+)
+async def stream_message_endpoint(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    session_id: int,
+    body: ChatMessageCreate,
+) -> StreamingResponse:
+    """
+    Stream chat response using Server-Sent Events (SSE).
+
+    Response format:
+    - Each chunk: `data: <text>\n\n`
+    - Completion marker: `data: [DONE]\n\n`
+
+    Client should:
+    1. Connect to this endpoint
+    2. Parse SSE events
+    3. Stop when receiving `[DONE]` marker
+    """
+    return StreamingResponse(
+        stream_message_and_get_response(
+            session=session,
+            current_user=current_user,
+            chat_session_id=session_id,
+            payload=body,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",  # Disable proxy buffering for Nginx/Apache
+        },
+    )
 
 
 @router.post(

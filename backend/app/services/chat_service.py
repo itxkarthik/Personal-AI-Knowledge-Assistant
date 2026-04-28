@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from datetime import datetime
 
 from app.ai.rag import run_rag_pipeline
@@ -219,3 +220,76 @@ def _invoke_rag(*, session: Session, current_user: User, query: str) -> tuple[st
         query=query,
     )
     return rag_result.answer, rag_result.sources
+
+
+async def stream_message_and_get_response(
+    *,
+    session: Session,
+    current_user: User,
+    chat_session_id: int,
+    payload: ChatMessageCreate,
+) -> AsyncGenerator[str, None]:
+    """
+    Stream chat response with Server-Sent Events (SSE) format.
+
+    Yields:
+        str: Text chunks in SSE format (e.g., "data: hello world\n\n")
+        Final yield: "data: [DONE]\n\n" to signal completion
+    """
+    chat_session = get_chat_session_by_id(
+        session=session,
+        current_user=current_user,
+        chat_session_id=chat_session_id,
+    )
+
+    # Create and save user message
+    user_message = ChatMessages(
+        session_id=chat_session.id,
+        role="user",
+        content=payload.content,
+    )
+    session.add(user_message)
+    session.commit()
+    session.refresh(user_message)
+
+    # Get RAG context with retrieval results
+    try:
+        rag_answer, rag_sources = _invoke_rag(
+            session=session, current_user=current_user, query=payload.content
+        )
+    except Exception:
+        logger.exception("RAG pipeline failed for chat session %s", chat_session.id)
+        rag_answer = (
+            "I could not reach the retrieval services right now. "
+            "Please try again in a moment after the AI backend is available."
+        )
+        rag_sources = {"documents": [], "chunks": []}
+
+    # Stream the response in SSE format
+    accumulated_response = rag_answer
+    # Escape newlines for SSE format
+    escaped_response = rag_answer.replace("\n", "\\n")
+    yield f"data: {escaped_response}\n\n"
+
+    # Signal completion
+    yield "data: [DONE]\n\n"
+
+    # Save assistant message with full response after streaming completes
+    assistant_message = ChatMessages(
+        session_id=chat_session.id,
+        role="assistant",
+        content=accumulated_response,
+        model_used="rag-v1",
+        sources=rag_sources,
+        tokens_used=len(accumulated_response.split()),
+    )
+    session.add(assistant_message)
+
+    # Update session metadata
+    chat_session.last_message_at = datetime.now()
+    if not chat_session.title:
+        chat_session.title = create_content_preview(payload.content, max_length=80)
+    session.add(chat_session)
+
+    session.commit()
+    logger.info("Streamed response saved to chat session %s", chat_session.id)
