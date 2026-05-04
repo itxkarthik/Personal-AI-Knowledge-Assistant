@@ -1,10 +1,20 @@
 "use client";
 
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { Search, Bell, Settings, User, LogOut } from "lucide-react";
+import {
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Input,
+  Separator,
+} from "@/components/ui";
 
 export function Header() {
   const router = useRouter();
@@ -12,58 +22,51 @@ export function Header() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   return (
-    <header className="fixed top-0 right-0 left-64 z-30 flex justify-between items-center px-8 h-16 bg-[#131313]/60 backdrop-blur-xl border-b border-[#464554]/20 font-['Inter'] font-medium tracking-tight">
-      <div className="flex items-center gap-8">
-        <div className="relative flex items-center">
-          <Search className="absolute left-3 text-[#908fa0] w-4 h-4" />
-          <input
-            className="bg-[#0e0e0e] border-none rounded-xl pl-10 pr-4 py-2 text-xs w-64 focus:ring-1 focus:ring-[#bcff5f]/50 text-[#e2e2e2] placeholder-[#908fa0]/60"
-            placeholder="Search knowledge graph..."
-            type="text"
-          />
+    <header className="fixed left-64 right-0 top-0 z-30 border-b border-white/10 bg-[#111111]/80 backdrop-blur-2xl">
+      <div className="flex h-16 items-center justify-between px-8">
+        <div className="flex items-center gap-6">
+          <div className="relative w-[22rem] max-w-[42vw]">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <Input
+              className="h-11 rounded-full border-white/10 bg-white/5 pl-10 text-sm text-white placeholder:text-white/35 focus-visible:ring-[#bcff5f]/30"
+              placeholder="Search knowledge graph..."
+              type="text"
+            />
+          </div>
+          <div className="hidden items-center gap-2 xl:flex">
+            <Badge variant="secondary" className="rounded-full bg-white/8 px-3 py-1 text-white/80">
+              Systems
+            </Badge>
+            <Badge variant="outline" className="rounded-full border-white/10 bg-transparent px-3 py-1 text-white/70">
+              Logs
+            </Badge>
+            <Badge variant="outline" className="rounded-full border-white/10 bg-transparent px-3 py-1 text-white/70">
+              Terminal
+            </Badge>
+          </div>
         </div>
-        <nav className="flex gap-6 text-sm">
-          <a className="text-[#e2e2e2]/70 hover:text-[#bcff5f] transition-colors cursor-pointer">
-            Systems
-          </a>
-          <a className="text-[#e2e2e2]/70 hover:text-[#bcff5f] transition-colors cursor-pointer">
-            Logs
-          </a>
-          <a className="text-[#e2e2e2]/70 hover:text-[#bcff5f] transition-colors cursor-pointer">
-            Terminal
-          </a>
-        </nav>
-      </div>
-      <div className="flex items-center gap-4">
-        <button
-          className="text-[#e2e2e2]/70 hover:text-[#bcff5f] transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell className="w-5 h-5" />
-        </button>
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button
-              className="text-[#e2e2e2]/70 hover:text-[#bcff5f] transition-colors"
-              aria-label="Settings"
-            >
-              <Settings className="w-5 h-5" />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content
-              sideOffset={10}
-              className="z-50 min-w-48 rounded-xl border border-[#464554]/30 bg-[#1f1f1f] p-2 text-[#e2e2e2] shadow-2xl"
-            >
-              <DropdownMenu.Item
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="rounded-full text-white/70 hover:bg-white/8 hover:text-[#bcff5f]">
+            <Bell className="h-5 w-5" />
+            <span className="sr-only">Notifications</span>
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="rounded-full text-white/70 hover:bg-white/8 hover:text-[#bcff5f]">
+                <Settings className="h-5 w-5" />
+                <span className="sr-only">Settings</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 rounded-2xl border-white/10 bg-[#171717] p-2 text-white shadow-2xl">
+              <DropdownMenuItem
                 onClick={() => router.push("/dashboard/settings")}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm outline-none transition hover:bg-[#2a2a2a] text-[#e2e2e2]/80"
+                className="cursor-pointer rounded-xl px-3 py-2 text-sm text-white/85 hover:bg-white/8"
               >
-                <User className="w-4 h-4" />
+                <User className="mr-2 h-4 w-4" />
                 Profile
-              </DropdownMenu.Item>
-              <DropdownMenu.Separator className="my-1 h-px bg-[#464554]/20" />
-              <DropdownMenu.Item
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="my-1 bg-white/10" />
+              <DropdownMenuItem
                 onClick={async () => {
                   if (isLoggingOut) return;
                   setIsLoggingOut(true);
@@ -74,15 +77,16 @@ export function Header() {
                     setIsLoggingOut(false);
                   }
                 }}
-                className="flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm text-[#ffb4ab] outline-none transition hover:bg-[#ffb4ab]/10"
+                className="cursor-pointer rounded-xl px-3 py-2 text-sm text-[#ffb4ab] hover:bg-[#ffb4ab]/10"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="mr-2 h-4 w-4" />
                 {isLoggingOut ? "Logging out..." : "Logout"}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
+      <Separator className="bg-white/10" />
     </header>
   );
 }

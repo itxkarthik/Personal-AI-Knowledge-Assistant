@@ -4,6 +4,8 @@ import { useNetworkStatus } from '@/lib/hooks/useNetworkStatus';
 import { requestQueue } from '@/lib/utils/requestQueue';
 import { useState, useEffect } from 'react';
 
+import { Badge, Card, CardContent, CardDescription, CardHeader, CardTitle, Separator } from '@/components/ui';
+
 export function StatusTerminal() {
   const { isOnline } = useNetworkStatus();
   const [queueCount, setQueueCount] = useState(0);
@@ -29,14 +31,28 @@ export function StatusTerminal() {
   const syncStatus = queueCount > 0 ? 'SYNC: ' + queueCount + ' PENDING' : 'SYNC: 100%';
 
   return (
-    <div className='fixed top-20 right-8 z-20 glass-panel border border-[#464554]/20 rounded-lg p-3 ambient-glow'>
-      <div className='flex items-center gap-3'>
-        <div className={'w-2 h-2 rounded-full ' + dotColor + ' ' + pulseClass}></div>
-        <div className='font-mono text-[10px] tracking-tighter'>
-          <div className={statusColor}>ETHER_OS :: {status}</div>
-          <div className='text-[#bcff5f]'>LATENCY: {latency}ms // {syncStatus}</div>
+    <Card className='fixed right-8 top-20 z-20 w-[18rem] border-white/10 bg-[#171717]/90 shadow-2xl backdrop-blur-xl'>
+      <CardHeader className='space-y-2 px-4 py-4'>
+        <div className='flex items-center justify-between'>
+          <CardTitle className='text-sm font-semibold tracking-wide text-white'>System Status</CardTitle>
+          <Badge variant={isOnline ? 'secondary' : 'destructive'} className='rounded-full px-2.5 py-0.5 text-[10px] uppercase tracking-[0.18em]'>
+            {status}
+          </Badge>
         </div>
-      </div>
-    </div>
+        <CardDescription className='text-xs text-white/55'>Realtime connectivity and queue health.</CardDescription>
+      </CardHeader>
+      <CardContent className='px-4 pb-4'>
+        <div className='flex items-center gap-3'>
+          <div className={'h-2.5 w-2.5 rounded-full ' + dotColor + ' ' + pulseClass}></div>
+          <div className='font-mono text-[10px] tracking-[0.2em] text-white/80'>ETHER_OS</div>
+        </div>
+        <Separator className='my-3 bg-white/8' />
+        <div className='space-y-1 font-mono text-[11px] leading-5 tracking-tight text-white/75'>
+          <div className={statusColor}>STATUS // {status}</div>
+          <div className='text-[#bcff5f]'>LATENCY // {latency}ms</div>
+          <div className='text-white/60'>{syncStatus}</div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
