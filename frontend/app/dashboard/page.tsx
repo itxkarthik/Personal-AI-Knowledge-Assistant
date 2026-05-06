@@ -2,13 +2,18 @@
 
 import { OverviewHero } from "@/components/features/dashboard/OverviewHero";
 import { StatusTerminal } from "@/components/features/dashboard/StatusTerminal";
+import { ArrowUpRight, FileText, MessageSquare, Search, Upload } from "lucide-react";
+
 import {
-  FileText,
-  Upload,
-  MessageSquare,
-  Search,
-  ArrowUpRight,
-} from "lucide-react";
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Separator,
+} from "@/components/ui";
 
 export default function DashboardPage() {
   const quickActions = [
@@ -44,55 +49,92 @@ export default function DashboardPage() {
 
       <OverviewHero />
 
-      {/* Quick Actions */}
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {quickActions.map((action) => {
           const IconComponent = action.icon;
           return (
-            <a
+            <Card
               key={action.title}
-              href={action.href}
-              className="group block rounded-2xl border border-[#464554]/20 bg-[#1f1f1f] p-5 backdrop-blur transition hover:border-[#bcff5f]/40 hover:bg-[#1f1f1f]"
+              className="group border-white/10 bg-[#171717]/90 transition hover:border-[#bcff5f]/25 hover:bg-[#1a1a1a]"
             >
-              <div className="flex items-start justify-between">
-                <IconComponent className="w-6 h-6 text-[#c0c1ff]" />
-                <ArrowUpRight className="w-5 h-5 text-[#908fa0] transition group-hover:text-[#c0c1ff]" />
-              </div>
-              <h2 className="mt-4 font-bold text-[#e2e2e2]">{action.title}</h2>
-              <p className="mt-1 text-sm text-[#c7c4d7]">
-                {action.description}
-              </p>
-            </a>
+              <CardContent className="flex h-full flex-col gap-4 p-5">
+                <div className="flex items-start justify-between">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/8 text-[#c0c1ff] transition group-hover:bg-[#bcff5f]/12 group-hover:text-[#dfffa8]">
+                    <IconComponent className="h-5 w-5" />
+                  </div>
+                  <ArrowUpRight className="h-5 w-5 text-white/30 transition group-hover:text-[#c0c1ff]" />
+                </div>
+
+                <div className="space-y-1">
+                  <h2 className="text-base font-semibold text-white">{action.title}</h2>
+                  <p className="text-sm text-white/60">{action.description}</p>
+                </div>
+
+                <div className="mt-auto flex items-center justify-between pt-2">
+                  <Badge variant="outline" className="border-white/10 bg-white/5 text-white/65">
+                    Quick action
+                  </Badge>
+                  <Button asChild variant="ghost" size="sm" className="h-8 rounded-full px-3 text-white/70 hover:bg-white/8 hover:text-white">
+                    <a href={action.href}>Open</a>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           );
         })}
       </section>
 
-      {/* Recent Items */}
-      <section className="rounded-2xl border border-[#464554]/20 bg-[#1f1f1f] p-6">
-        <div className="mb-4 flex items-center justify-between">
+      <Card className="border-white/10 bg-[#171717]/90">
+        <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-[#908fa0]">
-              Recent Activity
-            </p>
-            <h3 className="mt-1 text-lg font-bold text-[#e2e2e2]">
-              Latest updates
-            </h3>
+            <Badge variant="secondary" className="rounded-full bg-white/8 text-white/75">
+              Recent activity
+            </Badge>
+            <CardTitle className="mt-3 text-lg text-white">Latest updates</CardTitle>
+            <CardDescription className="mt-1 text-white/60">
+              Your workspace is quiet for now. Start by creating a note or uploading a document.
+            </CardDescription>
           </div>
-          <a
-            href="/dashboard/search"
-            className="text-sm text-[#c7c4d7] hover:text-[#c0c1ff]"
-          >
-            View all
-          </a>
-        </div>
+          <Button variant="ghost" size="sm" className="rounded-full text-white/70 hover:bg-white/8 hover:text-white" asChild>
+            <a href="/dashboard/search">View all</a>
+          </Button>
+        </CardHeader>
 
-        <div className="space-y-3">
-          <p className="rounded-xl border border-[#464554]/20 p-3 text-sm text-[#c7c4d7]">
-            No activity yet. Create your first note or upload a document to get
-            started.
-          </p>
-        </div>
-      </section>
+        <Separator className="bg-white/10" />
+
+        <CardContent className="py-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              {
+                title: "Notes",
+                description: "Capture an idea, summary, or reference point.",
+                cta: "Create note",
+                href: "/dashboard/notes",
+              },
+              {
+                title: "Documents",
+                description: "Bring PDFs, docs, and screenshots into the vault.",
+                cta: "Upload file",
+                href: "/dashboard/documents",
+              },
+              {
+                title: "Chat",
+                description: "Ask questions and keep the conversation attached to context.",
+                cta: "Open chat",
+                href: "/dashboard/chat",
+              },
+            ].map((item) => (
+              <div key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                <p className="text-sm font-semibold text-white">{item.title}</p>
+                <p className="mt-2 text-sm text-white/60">{item.description}</p>
+                <Button asChild variant="link" className="mt-4 h-auto p-0 text-[#bcff5f] hover:text-[#dfffa8]">
+                  <a href={item.href}>{item.cta}</a>
+                </Button>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
