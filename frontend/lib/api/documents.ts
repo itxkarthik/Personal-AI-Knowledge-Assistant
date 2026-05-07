@@ -58,13 +58,8 @@ export async function uploadDocument(
 	formData.append("language", payload.language?.trim() || "en");
 
 	const response = await apiClient.post<DocumentResponse>(
-		"/documents/upload",
-		formData,
-		{
-			headers: {
-				"Content-Type": "multipart/form-data",
-			},
-		}
+		"/documents/upload/",
+		formData
 	);
 
 	return response.data;

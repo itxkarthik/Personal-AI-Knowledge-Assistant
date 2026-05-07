@@ -99,16 +99,23 @@ export function isRetryableStatus(status?: number): boolean {
 /**
  * Check if an axios error is retryable
  */
-export function isRetryableError(error: any): boolean {
+interface RetryableErrorLike {
+  response?: { status?: number };
+  message?: string;
+}
+
+export function isRetryableError(error: unknown): boolean {
+  const candidate = error as RetryableErrorLike;
+
   // No response = network error
-  if (!error.response) {
+  if (!candidate.response) {
     // Don't retry CORS errors
-    if (error.message?.includes("CORS")) {
+    if (candidate.message?.includes("CORS")) {
       return false;
     }
     return true;
   }
 
   // Check status code
-  return isRetryableStatus(error.response.status);
+  return isRetryableStatus(candidate.response.status);
 }

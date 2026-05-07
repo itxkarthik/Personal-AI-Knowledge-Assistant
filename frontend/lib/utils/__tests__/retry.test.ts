@@ -6,9 +6,9 @@ import {
   retryWithExponentialBackoff,
   calculateDelay,
   isRetryableStatus,
-  isRetryableError,
-  DEFAULT_RETRY_CONFIG
+  isRetryableError
 } from "../retry";
+import { vi } from "vitest";
 
 describe("Retry Utility", () => {
   describe("calculateDelay", () => {
@@ -95,7 +95,7 @@ describe("Retry Utility", () => {
 
   describe("retryWithExponentialBackoff", () => {
     it("should succeed on first attempt", async () => {
-      const fn = jest.fn().mockResolvedValue("success");
+      const fn = vi.fn().mockResolvedValue("success");
       const result = await retryWithExponentialBackoff(fn);
 
       expect(result).toBe("success");
@@ -104,7 +104,7 @@ describe("Retry Utility", () => {
 
     it("should retry and eventually succeed", async () => {
       let attempts = 0;
-      const fn = jest.fn(async () => {
+      const fn = vi.fn(async () => {
         attempts++;
         if (attempts < 3) {
           throw new Error("Temporary failure");
@@ -123,7 +123,7 @@ describe("Retry Utility", () => {
     });
 
     it("should fail after max retries", async () => {
-      const fn = jest.fn().mockRejectedValue(new Error("Persistent failure"));
+      const fn = vi.fn().mockRejectedValue(new Error("Persistent failure"));
 
       await expect(
         retryWithExponentialBackoff(fn, {

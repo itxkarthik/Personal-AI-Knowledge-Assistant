@@ -34,6 +34,51 @@ export class APIRequestError extends Error {
 	}
 }
 
+function normalizeErrorMessage(data: ApiError | undefined, fallback: string): string {
+	if (!data) {
+		return fallback;
+	}
+
+	if (typeof data.message === "string" && data.message.trim()) {
+		return data.message;
+	}
+
+	if (typeof data.detail === "string" && data.detail.trim()) {
+		return data.detail;
+	}
+
+	if (Array.isArray(data.details) && data.details.length > 0) {
+		return data.details.map((item) => item.message).join("; ");
+	}
+
+	if (Array.isArray(data.detail)) {
+		const extracted = data.detail
+			.map((item) => {
+				if (typeof item === "string") {
+					return item;
+				}
+				if (item && typeof item === "object" && "msg" in item) {
+					return String((item as { msg: unknown }).msg);
+				}
+				return null;
+			})
+			.filter((item): item is string => Boolean(item));
+		if (extracted.length > 0) {
+			return extracted.join("; ");
+		}
+	}
+
+	if (data.detail && typeof data.detail === "object") {
+		try {
+			return JSON.stringify(data.detail);
+		} catch {
+			return fallback;
+		}
+	}
+
+	return fallback;
+}
+
 function readCookie(name: string): string | null {
 	if (typeof document === "undefined") {
 		return null;
@@ -105,6 +150,12 @@ apiClient.interceptors.request.use((config) => {
 		}
 	}
 
+	// Let browser set multipart boundaries automatically.
+	if (typeof FormData !== "undefined" && config.data instanceof FormData) {
+		config.headers = config.headers ?? {};
+		delete config.headers["Content-Type"];
+	}
+
 	if (method === "GET" || method === "HEAD" || method === "OPTIONS") {
 		return config;
 	}
@@ -170,11 +221,10 @@ apiClient.interceptors.response.use(
 		}
 
 		const data = error.response?.data;
-		const baseMessage =
-			data?.message ??
-			data?.detail ??
-			error.message ??
-			"Something went wrong while contacting the server.";
+		const baseMessage = normalizeErrorMessage(
+			data,
+			error.message ?? "Something went wrong while contacting the server."
+		);
 		const message = data?.request_id
 			? `${baseMessage} (Request ID: ${data.request_id})`
 			: baseMessage;
