@@ -27,27 +27,27 @@ export function StreamingIndicator({
 	}
 
 	return (
-		<div className="flex items-center gap-3 rounded-lg border border-zinc-700 bg-zinc-900/50 px-3 py-2 text-sm">
+		<div className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 text-sm">
 			{isStreaming ? (
 				<>
-					<Loader2 className="h-4 w-4 animate-spin text-blue-400" />
-					<span className="text-zinc-300">Streaming response...</span>
-					<span className="ml-auto font-mono text-blue-400">{tokenCount} tokens</span>
+					<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+					<span className="text-muted-foreground">Streaming response...</span>
+					<span className="ml-auto font-mono text-muted-foreground">{tokenCount} tokens</span>
 					{onCancel && (
 						<button
 							onClick={onCancel}
-							className="ml-2 rounded p-1 hover:bg-zinc-800 transition-colors"
+							className="ml-2 rounded p-1 transition-colors hover:bg-muted"
 							title="Cancel streaming"
 							type="button"
 						>
-							<Square className="h-4 w-4 fill-current text-red-400" />
+							<Square className="h-4 w-4 fill-current text-muted-foreground" />
 						</button>
 					)}
 				</>
 			) : (
 				<>
-					<span className="text-zinc-400">Completed</span>
-					<span className="ml-auto font-mono text-green-400">{tokenCount} tokens</span>
+					<span className="text-muted-foreground">Completed</span>
+					<span className="ml-auto font-mono text-foreground">{tokenCount} tokens</span>
 				</>
 			)}
 		</div>
