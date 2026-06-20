@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { motion } from "motion/react";
 
 import { Button, Card, CardContent, Input, Label } from "@/components/ui";
 import { getCurrentUser, login } from "@/lib/api/auth";
@@ -42,44 +41,54 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4">
-      <div className="pointer-events-none absolute inset-0 cyber-grid opacity-30" />
-      <div className="pointer-events-none absolute -left-32 top-16 h-72 w-72 rounded-full bg-cyan-500/15 blur-3xl" />
-      <div className="pointer-events-none absolute -right-32 bottom-10 h-72 w-72 rounded-full bg-teal-500/12 blur-3xl" />
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <Card className="w-full max-w-md border-border bg-background">
+        <CardContent className="p-8">
+          <p className="text-xs text-muted-foreground">Welcome Back</p>
+          <h1 className="mt-2 text-3xl font-bold text-foreground">Sign in</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Access your personal knowledge workspace.</p>
 
-      <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="relative w-full max-w-md">
-        <Card className="border-cyan-500/25 bg-[#070b1d]/85 backdrop-blur-xl">
-          <CardContent className="p-8">
-            <p className="text-xs uppercase tracking-[0.2em] text-cyan-200/70">Welcome Back</p>
-            <h1 className="mt-2 text-3xl font-bold text-cyan-50">Sign in</h1>
-            <p className="mt-1 text-sm text-cyan-100/65">Access your knowledge workspace.</p>
+          <form onSubmit={onSubmit} className="mt-6 space-y-4">
+            <div className="space-y-2">
+              <Label>Email</Label>
+              <Input
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                type="email"
+                required
+                placeholder="you@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Password</Label>
+              <Input
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                type="password"
+                required
+                placeholder="••••••••"
+              />
+            </div>
 
-            <form onSubmit={onSubmit} className="mt-6 space-y-5">
-              <div className="space-y-2">
-                <Label className="text-cyan-100/85">Email</Label>
-                <Input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required className="border-cyan-500/30 bg-cyan-500/5 text-cyan-50" placeholder="you@example.com" />
+            {error ? (
+              <div className="rounded-sm border border-[#ff3b30] bg-[#ff3b30]/10 px-4 py-3 text-sm text-[#a50011]">
+                {error}
               </div>
-              <div className="space-y-2">
-                <Label className="text-cyan-100/85">Password</Label>
-                <Input value={password} onChange={(event) => setPassword(event.target.value)} type="password" required className="border-cyan-500/30 bg-cyan-500/5 text-cyan-50" placeholder="••••••••" />
-              </div>
+            ) : null}
 
-              {error ? <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</div> : null}
+            <Button type="submit" disabled={isSubmitting} className="w-full">
+              {isSubmitting ? <LoadingSpinner /> : "Sign in"}
+            </Button>
+          </form>
 
-              <Button type="submit" disabled={isSubmitting} className="w-full bg-cyan-300 text-slate-900 hover:bg-cyan-200">
-                {isSubmitting ? <LoadingSpinner className="text-slate-900" /> : "Sign in"}
-              </Button>
-            </form>
-
-            <p className="mt-6 text-center text-sm text-cyan-100/65">
-              No account yet?{" "}
-              <Link href="/auth/register" className="font-semibold text-teal-300 hover:text-teal-200">
-                Create one
-              </Link>
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>
+          <p className="mt-6 text-center text-sm text-muted-foreground">
+            No account yet?{" "}
+            <Link href="/auth/register" className="font-medium underline underline-offset-4">
+              Create one
+            </Link>
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
