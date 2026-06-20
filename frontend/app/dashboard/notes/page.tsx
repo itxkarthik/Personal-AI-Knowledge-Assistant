@@ -4,10 +4,7 @@ import { Grid2X2, List, Plus, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { NoteEditor } from "@/components/features/notes/NoteEditor";
-import {
-  getDefaultNoteTemplates,
-  NoteTemplates,
-} from "@/components/features/notes/NoteTemplates";
+import { getDefaultNoteTemplates, NoteTemplates } from "@/components/features/notes/NoteTemplates";
 import { NoteSidebar } from "@/components/features/notes/NoteSidebar";
 import { useAutoSave } from "@/lib/hooks/useAutoSave";
 import { useNotes } from "@/lib/hooks/useNotes";
@@ -82,9 +79,7 @@ export default function NotesPage() {
 
   const setDraftForSelectedNote = useCallback(
     (updater: (prev: DraftState) => DraftState) => {
-      if (!selectedNote) {
-        return;
-      }
+      if (!selectedNote) return;
 
       setDraftsByNoteId((prev) => {
         const current = prev[selectedNote.id] ?? draftFromNote(selectedNote);
@@ -99,13 +94,8 @@ export default function NotesPage() {
 
   const saveDraft = useCallback(
     async (value: DraftState) => {
-      if (!selectedNote) {
-        return;
-      }
-
-      if (deletingNoteIdsRef.current.has(selectedNote.id)) {
-        return;
-      }
+      if (!selectedNote) return;
+      if (deletingNoteIdsRef.current.has(selectedNote.id)) return;
 
       await updateNoteById(selectedNote.id, {
         title: value.title.trim() || "Untitled note",
@@ -129,9 +119,7 @@ export default function NotesPage() {
   const templates = useMemo(() => getDefaultNoteTemplates(), []);
 
   const handleCreateNote = useCallback(async () => {
-    if (isCreatingNote) {
-      return;
-    }
+    if (isCreatingNote) return;
 
     setIsCreatingNote(true);
     try {
@@ -171,17 +159,11 @@ export default function NotesPage() {
   );
 
   const handleDeleteSelected = useCallback(async () => {
-    if (!selectedNote) {
-      return;
-    }
+    if (!selectedNote) return;
 
     const noteId = selectedNote.id;
-    const confirmed = window.confirm(
-      `Delete note \"${selectedNote.title}\"? This cannot be undone.`
-    );
-    if (!confirmed) {
-      return;
-    }
+    const confirmed = window.confirm(`Delete note \"${selectedNote.title}\"? This cannot be undone.`);
+    if (!confirmed) return;
 
     deletingNoteIdsRef.current.add(noteId);
     setSelectedNote(null);
@@ -203,17 +185,13 @@ export default function NotesPage() {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-2xl border border-cyan-500/20 bg-[#020611]/92 p-6 backdrop-blur">
+      <section className="border border-border bg-background p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs uppercase tracking-[0.24em] text-cyan-300/60">Notes</p>
-            <h1 className="mt-2 text-2xl font-semibold text-cyan-50">Notes</h1>
-            <p className="mt-1 text-sm text-cyan-100/65">
-              High-signal capture surface for research, meetings, and memory.
-            </p>
-            <p className="mt-2 text-xs uppercase tracking-[0.14em] text-cyan-300/55">
-              {total} {total === 1 ? "entry" : "entries"} indexed
-            </p>
+            <p className="text-xs text-muted-foreground">Notes</p>
+            <h1 className="mt-2 text-2xl font-bold text-foreground">Notes</h1>
+            <p className="mt-1 text-sm text-muted-foreground">High-signal capture surface for research, meetings, and memory.</p>
+            <p className="mt-2 text-xs text-muted-foreground">{total} {total === 1 ? "entry" : "entries"} indexed</p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -223,7 +201,7 @@ export default function NotesPage() {
                 void handleCreateNote();
               }}
               disabled={isCreatingNote}
-              className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/40 bg-cyan-300 px-3 py-2 text-sm font-medium text-slate-900 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-sm border border-border bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Plus className="h-4 w-4" />
               {isCreatingNote ? "Creating..." : "New Note"}
@@ -231,10 +209,8 @@ export default function NotesPage() {
             <button
               type="button"
               onClick={() => setViewMode("grid")}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
-                filters.viewMode === "grid"
-                  ? "border-cyan-400/50 bg-cyan-500/20 text-cyan-100"
-                  : "border-cyan-500/30 text-cyan-200/75 hover:border-cyan-400/55"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-sm border transition ${
+                filters.viewMode === "grid" ? "border-border bg-accent text-foreground" : "border-border text-muted-foreground hover:bg-muted"
               }`}
             >
               <Grid2X2 className="h-4 w-4" />
@@ -242,10 +218,8 @@ export default function NotesPage() {
             <button
               type="button"
               onClick={() => setViewMode("list")}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border transition ${
-                filters.viewMode === "list"
-                  ? "border-cyan-400/50 bg-cyan-500/20 text-cyan-100"
-                  : "border-cyan-500/30 text-cyan-200/75 hover:border-cyan-400/55"
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-sm border transition ${
+                filters.viewMode === "list" ? "border-border bg-accent text-foreground" : "border-border text-muted-foreground hover:bg-muted"
               }`}
             >
               <List className="h-4 w-4" />
@@ -254,24 +228,20 @@ export default function NotesPage() {
         </div>
 
         <div className="relative mt-4 max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300/60" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={filters.search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search title or content"
-            className="w-full rounded-lg border border-cyan-500/30 bg-cyan-500/5 py-2 pl-9 pr-3 text-sm text-cyan-50 placeholder:text-cyan-300/45 focus:border-cyan-400/60 focus:outline-none"
+            className="w-full rounded-sm border border-border bg-muted py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
           />
         </div>
       </section>
 
       <NoteTemplates onUseTemplate={handleCreateFromTemplate} templates={templates} />
 
-      {error ? (
-        <p className="rounded-lg border border-rose-900/50 bg-rose-950/30 p-3 text-sm text-rose-200">
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className="rounded-sm border border-[#ff3b30] bg-[#ff3b30]/10 p-3 text-sm text-[#a50011]">{error}</p> : null}
 
       <div className="grid gap-4 xl:grid-cols-[280px_360px_minmax(0,1fr)]">
         <NoteSidebar
@@ -283,43 +253,28 @@ export default function NotesPage() {
           onSelectTag={setTagFilter}
           onCreateFolder={() => {
             const name = window.prompt("Folder name");
-            if (!name?.trim()) {
-              return;
-            }
+            if (!name?.trim()) return;
             void createFolder({ name: name.trim() });
           }}
           onCreateTag={() => {
             const name = window.prompt("Tag name");
-            if (!name?.trim()) {
-              return;
-            }
+            if (!name?.trim()) return;
             void createTag({ name: name.trim(), color: "#a1a1aa" });
           }}
         />
 
-        <section className="rounded-2xl border border-cyan-500/20 bg-[#020611]/92 p-4 backdrop-blur">
-          <p className="mb-2 text-xs uppercase tracking-[0.2em] text-cyan-300/55">Entries</p>
+        <section className="border border-border bg-background p-4">
+          <p className="mb-2 text-xs text-muted-foreground">Entries</p>
           {isLoading ? (
             <div className="space-y-2">
               {Array.from({ length: 7 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="h-16 animate-pulse rounded-lg border border-cyan-500/20 bg-[#01040f]"
-                />
+                <div key={index} className="h-16 animate-pulse border border-border bg-muted" />
               ))}
             </div>
           ) : notes.length === 0 ? (
-            <div className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 p-4 text-sm text-cyan-100/65">
-              No notes found for the current filter.
-            </div>
+            <div className="border border-border bg-muted p-4 text-sm text-muted-foreground">No notes found for the current filter.</div>
           ) : (
-            <div
-              className={
-                filters.viewMode === "grid"
-                  ? "grid grid-cols-1 gap-2"
-                  : "space-y-2"
-              }
-            >
+            <div className={filters.viewMode === "grid" ? "grid grid-cols-1 gap-2" : "space-y-2"}>
               {notes.map((note) => {
                 const isActive = selectedNote?.id === note.id;
                 const preview = stripHtmlTags(note.content).slice(0, 140);
@@ -329,15 +284,13 @@ export default function NotesPage() {
                     key={note.id}
                     type="button"
                     onClick={() => setSelectedNote(note)}
-                    className={`ui-card-hover w-full rounded-lg border p-3 text-left ${
-                      isActive
-                        ? "border-cyan-400/45 bg-cyan-500/15"
-                        : "border-cyan-500/20 bg-[#01040f] hover:border-cyan-400/50"
+                    className={`w-full border p-3 text-left ${
+                      isActive ? "border-border bg-accent" : "border-border bg-background hover:bg-muted"
                     }`}
                   >
-                    <p className="line-clamp-1 text-sm font-semibold text-cyan-50">{note.title}</p>
-                    <p className="mt-1 line-clamp-2 text-xs text-cyan-100/60">{preview || "No content"}</p>
-                    <div className="mt-2 flex items-center justify-between text-[10px] uppercase tracking-wider text-cyan-300/55">
+                    <p className="line-clamp-1 text-sm font-bold text-foreground">{note.title}</p>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{preview || "No content"}</p>
+                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
                       <span>V{note.version}</span>
                       <span>{new Date(note.updated_at).toLocaleDateString()}</span>
                     </div>
@@ -368,9 +321,7 @@ export default function NotesPage() {
               const exists = prev.tagIds.includes(tagId);
               return {
                 ...prev,
-                tagIds: exists
-                  ? prev.tagIds.filter((id) => id !== tagId)
-                  : [...prev.tagIds, tagId],
+                tagIds: exists ? prev.tagIds.filter((id) => id !== tagId) : [...prev.tagIds, tagId],
               };
             });
           }}
