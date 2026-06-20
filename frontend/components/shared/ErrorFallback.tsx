@@ -78,7 +78,7 @@ export function ErrorFallback({
 			title: "Network Error",
 			description: "Unable to connect to the server. Check your internet connection.",
 			icon: AlertCircle,
-			color: "bg-blue-500/10 border-blue-500/20 text-blue-400",
+			color: "bg-zinc-500/10 border-zinc-500/20 text-zinc-400",
 		},
 		permission: {
 			title: "Access Denied",
