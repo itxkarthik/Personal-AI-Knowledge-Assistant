@@ -1,7 +1,5 @@
 from typing import Any
 
-from fastapi import APIRouter, Query
-
 from app.api.deps import CurrentUser, SessionDep
 from app.models.note import Notes
 from app.models.user import Message
@@ -20,8 +18,8 @@ from app.schemas.note import (
 from app.services.note_service import (
     create_folder,
     create_note,
-    create_tag,
     create_note_link,
+    create_tag,
     delete_note_link,
     get_full_user_graph,
     get_note_by_id,
@@ -32,6 +30,7 @@ from app.services.note_service import (
     soft_delete_note,
     update_note,
 )
+from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
@@ -228,15 +227,13 @@ def create_tag_endpoint(*, session: SessionDep, current_user: CurrentUser, body:
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
-def get_note_graph_endpoint(
-    *, session: SessionDep, current_user: CurrentUser, note_id: int
-) -> Any:
+def get_note_graph_endpoint(*, session: SessionDep, current_user: CurrentUser, note_id: int) -> Any:
     """
     Get knowledge graph for a specific note.
     Returns the note and all directly connected notes (depth=1) with their links.
     """
     nodes, edges = get_note_graph(session=session, current_user=current_user, note_id=note_id)
-    
+
     node_responses = [
         {
             "id": node.id,
@@ -252,7 +249,7 @@ def get_note_graph_endpoint(
         }
         for node in nodes
     ]
-    
+
     edge_responses = [
         {
             "id": edge.id,
@@ -264,7 +261,7 @@ def get_note_graph_endpoint(
         }
         for edge in edges
     ]
-    
+
     return GraphResponse(nodes=node_responses, edges=edge_responses, center_node_id=note_id)
 
 
@@ -290,7 +287,7 @@ def get_full_graph_endpoint(
     nodes, edges = get_full_user_graph(
         session=session, current_user=current_user, limit=limit, offset=offset
     )
-    
+
     node_responses = [
         {
             "id": node.id,
@@ -306,7 +303,7 @@ def get_full_graph_endpoint(
         }
         for node in nodes
     ]
-    
+
     edge_responses = [
         {
             "id": edge.id,
@@ -318,7 +315,7 @@ def get_full_graph_endpoint(
         }
         for edge in edges
     ]
-    
+
     has_more = len(nodes) == limit
     return GraphAllResponse(nodes=node_responses, edges=edge_responses, has_more=has_more)
 
