@@ -20,6 +20,7 @@ interface NoteEditorProps {
   onToggleTag: (tagId: number) => void;
   onDelete: () => Promise<void>;
   isDeleting?: boolean;
+  className?: string;
 }
 
 export function NoteEditor({
@@ -36,10 +37,11 @@ export function NoteEditor({
   onToggleTag,
   onDelete,
   isDeleting = false,
+  className,
 }: NoteEditorProps) {
   if (!note) {
     return (
-      <div className="border border-border bg-background p-6 text-muted-foreground">
+      <div className={cn("border border-border bg-background p-6 text-muted-foreground", className)}>
         <p className="text-sm text-muted-foreground">Editor</p>
         <h2 className="mt-2 text-lg font-bold text-foreground">No note selected</h2>
         <p className="mt-2 text-sm">Pick a note from the list or create one from a template.</p>
@@ -48,8 +50,8 @@ export function NoteEditor({
   }
 
   return (
-    <section className="border border-border bg-background p-4">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+    <section className={cn("border border-border bg-background p-5", className)}>
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="text-xs text-muted-foreground">Entry Editor</p>
           <input
@@ -57,7 +59,7 @@ export function NoteEditor({
             value={title}
             onChange={(event) => onTitleChange(event.target.value)}
             placeholder="Untitled note"
-            className="mt-2 w-full rounded-sm border border-border bg-muted px-3 py-2 text-xl font-bold text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
+            className="mt-2 w-full rounded-sm border border-border bg-muted px-3 py-3 text-2xl font-bold text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
           />
         </div>
 
@@ -76,7 +78,7 @@ export function NoteEditor({
         </div>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {tags.map((tag) => {
           const active = selectedTagIds.includes(tag.id);
           return (
@@ -97,7 +99,7 @@ export function NoteEditor({
         })}
       </div>
 
-      <TipTapEditor value={content} onChange={onContentChange} />
+      <TipTapEditor value={content} onChange={onContentChange} className="min-h-0 flex-1" />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
         <div className="inline-flex items-center gap-2">

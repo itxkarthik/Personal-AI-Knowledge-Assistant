@@ -341,7 +341,7 @@ def create_link_endpoint(
     current_user: CurrentUser,
     source_id: int,
     target_id: int,
-    link_type: str = Query(default="related", regex="^(related|referenced|parent|child)$"),
+    link_type: str = Query(default="related", pattern="^(related|referenced|parent|child)$"),
     description: str | None = Query(default=None),
 ) -> Any:
     """Create a link between two notes."""

@@ -8,7 +8,7 @@ import {
   isRetryableStatus,
   isRetryableError
 } from "../retry";
-import { vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 describe("Retry Utility", () => {
   describe("calculateDelay", () => {

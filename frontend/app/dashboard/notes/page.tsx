@@ -1,17 +1,45 @@
 "use client";
 
-import { Grid2X2, List, Plus, Search } from "lucide-react";
+import { ChevronDown, ChevronRight, Clock3, FileText, FolderOpen, Tags } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { NoteEditor } from "@/components/features/notes/NoteEditor";
-import { getDefaultNoteTemplates, NoteTemplates } from "@/components/features/notes/NoteTemplates";
 import { NoteSidebar } from "@/components/features/notes/NoteSidebar";
+import { Separator } from "@/components/ui";
+import { listNotes } from "@/lib/api/notes";
 import { useAutoSave } from "@/lib/hooks/useAutoSave";
 import { useNotes } from "@/lib/hooks/useNotes";
 import type { NoteResponse } from "@/types";
 
 function stripHtmlTags(content: string): string {
   return content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+interface NoteHeading {
+  id: string;
+  title: string;
+  level: number;
+}
+
+function extractHeadings(content: string): NoteHeading[] {
+  const matches = Array.from(content.matchAll(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/gi));
+  return matches
+    .map((match, index) => ({
+      id: `heading-${index}`,
+      title: stripHtmlTags(match[1]),
+      level: Number(match[0].slice(2, 3)),
+    }))
+    .filter((heading) => heading.title)
+    .slice(0, 16);
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 
 type DraftState = {
@@ -55,12 +83,13 @@ export default function NotesPage() {
     setSearch,
     setFolderFilter,
     setTagFilter,
-    setViewMode,
     clearError,
   } = useNotes();
 
   const [draftsByNoteId, setDraftsByNoteId] = useState<Record<number, DraftState>>({});
   const [isCreatingNote, setIsCreatingNote] = useState(false);
+  const [vaultNotes, setVaultNotes] = useState<NoteResponse[]>([]);
+  const [isVaultLoading, setIsVaultLoading] = useState(false);
   const deletingNoteIdsRef = useRef<Set<number>>(new Set());
 
   const draft = useMemo(() => {
@@ -76,6 +105,35 @@ export default function NotesPage() {
       setSelectedNote(notes[0]);
     }
   }, [notes, selectedNote, setSelectedNote]);
+
+  const refreshVaultNotes = useCallback(async () => {
+    setIsVaultLoading(true);
+    try {
+      const response = await listNotes({
+        search: filters.search || undefined,
+        tag_id: filters.tagId ?? undefined,
+        skip: 0,
+        limit: 100,
+      });
+      setVaultNotes(response.data ?? []);
+    } finally {
+      setIsVaultLoading(false);
+    }
+  }, [filters.search, filters.tagId]);
+
+  useEffect(() => {
+    void refreshVaultNotes();
+  }, [refreshVaultNotes]);
+
+  useEffect(() => {
+    if (notes.length === 0) return;
+
+    setVaultNotes((current) => {
+      const byId = new Map(current.map((note) => [note.id, note]));
+      notes.forEach((note) => byId.set(note.id, note));
+      return Array.from(byId.values());
+    });
+  }, [notes]);
 
   const setDraftForSelectedNote = useCallback(
     (updater: (prev: DraftState) => DraftState) => {
@@ -116,9 +174,7 @@ export default function NotesPage() {
     skipInitial: true,
   });
 
-  const templates = useMemo(() => getDefaultNoteTemplates(), []);
-
-  const handleCreateNote = useCallback(async () => {
+  const handleCreateNote = useCallback(async (folderId = filters.folderId) => {
     if (isCreatingNote) return;
 
     setIsCreatingNote(true);
@@ -127,35 +183,28 @@ export default function NotesPage() {
         title: "Untitled note",
         content: "<p>Start writing...</p>",
         content_type: "html",
-        folder_id: filters.folderId,
+        folder_id: folderId,
         is_pinned: false,
         is_favorite: false,
         tag_ids: [],
       });
+      setFolderFilter(folderId);
       setSelectedNote(created);
+      await refreshVaultNotes();
     } finally {
       setIsCreatingNote(false);
     }
-  }, [createNote, filters.folderId, isCreatingNote, setSelectedNote]);
+  }, [createNote, filters.folderId, isCreatingNote, refreshVaultNotes, setFolderFilter, setSelectedNote]);
 
-  const handleCreateFromTemplate = useCallback(
-    async (template: { name: string; content: string; tags: string[] }) => {
-      const templateTagIds = tags
-        .filter((tag) => template.tags.some((templateTag) => templateTag === tag.name))
-        .map((tag) => tag.id);
+  const handleCreateFolder = useCallback(
+    async (parentFolderId?: number | null) => {
+      const name = window.prompt(parentFolderId ? "Subfolder name" : "Folder name");
+      if (!name?.trim()) return;
 
-      const created = await createNote({
-        title: template.name,
-        content: template.content,
-        content_type: "html",
-        folder_id: filters.folderId,
-        tag_ids: templateTagIds,
-        is_pinned: false,
-        is_favorite: false,
-      });
-      setSelectedNote(created);
+      const folder = await createFolder({ name: name.trim(), parent_folder_id: parentFolderId ?? null });
+      setFolderFilter(folder.id);
     },
-    [createNote, filters.folderId, setSelectedNote, tags]
+    [createFolder, setFolderFilter]
   );
 
   const handleDeleteSelected = useCallback(async () => {
@@ -175,6 +224,7 @@ export default function NotesPage() {
 
     try {
       await deleteNoteById(noteId);
+      setVaultNotes((current) => current.filter((note) => note.id !== noteId));
       clearError();
     } finally {
       deletingNoteIdsRef.current.delete(noteId);
@@ -182,79 +232,45 @@ export default function NotesPage() {
   }, [clearError, deleteNoteById, selectedNote, setSelectedNote]);
 
   const isSavingState = isSaving || isAutoSaving;
+  const selectedFolderName = useMemo(() => {
+    if (filters.folderId === null) {
+      return "All notes";
+    }
+
+    return folders.find((folder) => folder.id === filters.folderId)?.name ?? "Folder";
+  }, [filters.folderId, folders]);
+
+  const headings = useMemo(() => extractHeadings(draft.content), [draft.content]);
+  const previewText = useMemo(() => stripHtmlTags(draft.content), [draft.content]);
+  const treeNotes = vaultNotes.length > 0 ? vaultNotes : notes;
 
   return (
-    <div className="space-y-5">
-      <section className="border border-border bg-background p-6">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs text-muted-foreground">Notes</p>
-            <h1 className="mt-2 text-2xl font-bold text-foreground">Notes</h1>
-            <p className="mt-1 text-sm text-muted-foreground">High-signal capture surface for research, meetings, and memory.</p>
-            <p className="mt-2 text-xs text-muted-foreground">{total} {total === 1 ? "entry" : "entries"} indexed</p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                void handleCreateNote();
-              }}
-              disabled={isCreatingNote}
-              className="inline-flex items-center gap-2 rounded-sm border border-border bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus className="h-4 w-4" />
-              {isCreatingNote ? "Creating..." : "New Note"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("grid")}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-sm border transition ${
-                filters.viewMode === "grid" ? "border-border bg-accent text-foreground" : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <Grid2X2 className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("list")}
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-sm border transition ${
-                filters.viewMode === "list" ? "border-border bg-accent text-foreground" : "border-border text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="relative mt-4 max-w-xl">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            value={filters.search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search title or content"
-            className="w-full rounded-sm border border-border bg-muted py-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none"
-          />
-        </div>
-      </section>
-
-      <NoteTemplates onUseTemplate={handleCreateFromTemplate} templates={templates} />
-
+    <div className="space-y-3">
       {error ? <p className="rounded-sm border border-[#ff3b30] bg-[#ff3b30]/10 p-3 text-sm text-[#a50011]">{error}</p> : null}
 
-      <div className="grid gap-4 xl:grid-cols-[280px_360px_minmax(0,1fr)]">
+      <section className="overflow-hidden border border-border bg-background">
+        <div className="flex min-h-[calc(100dvh-6.5rem)] flex-col xl:grid xl:grid-cols-[340px_minmax(0,1fr)_300px]">
         <NoteSidebar
           folders={folders}
+          notes={treeNotes}
           tags={tags}
           selectedFolderId={filters.folderId}
+          selectedNoteId={selectedNote?.id ?? null}
           selectedTagId={filters.tagId}
+          search={filters.search}
+          total={treeNotes.length || total}
+          onSearchChange={setSearch}
           onSelectFolder={setFolderFilter}
+          onSelectNote={(note) => {
+            setFolderFilter(note.folder_id ?? null);
+            setSelectedNote(note);
+          }}
           onSelectTag={setTagFilter}
-          onCreateFolder={() => {
-            const name = window.prompt("Folder name");
-            if (!name?.trim()) return;
-            void createFolder({ name: name.trim() });
+          onCreateFolder={(parentFolderId) => {
+            void handleCreateFolder(parentFolderId);
+          }}
+          onCreateNote={(folderId) => {
+            void handleCreateNote(folderId ?? null);
           }}
           onCreateTag={() => {
             const name = window.prompt("Tag name");
@@ -263,72 +279,114 @@ export default function NotesPage() {
           }}
         />
 
-        <section className="border border-border bg-background p-4">
-          <p className="mb-2 text-xs text-muted-foreground">Entries</p>
-          {isLoading ? (
-            <div className="space-y-2">
-              {Array.from({ length: 7 }).map((_, index) => (
-                <div key={index} className="h-16 animate-pulse border border-border bg-muted" />
-              ))}
+        <div className="relative min-h-0 border-r border-border bg-background">
+          {(isLoading || isVaultLoading || isCreatingNote) && !selectedNote ? (
+            <div className="absolute inset-x-0 top-0 z-10 border-b border-border bg-muted px-4 py-2 text-xs text-muted-foreground">
+              Loading vault...
             </div>
-          ) : notes.length === 0 ? (
-            <div className="border border-border bg-muted p-4 text-sm text-muted-foreground">No notes found for the current filter.</div>
-          ) : (
-            <div className={filters.viewMode === "grid" ? "grid grid-cols-1 gap-2" : "space-y-2"}>
-              {notes.map((note) => {
-                const isActive = selectedNote?.id === note.id;
-                const preview = stripHtmlTags(note.content).slice(0, 140);
+          ) : null}
 
-                return (
-                  <button
-                    key={note.id}
-                    type="button"
-                    onClick={() => setSelectedNote(note)}
-                    className={`w-full border p-3 text-left ${
-                      isActive ? "border-border bg-accent" : "border-border bg-background hover:bg-muted"
-                    }`}
-                  >
-                    <p className="line-clamp-1 text-sm font-bold text-foreground">{note.title}</p>
-                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{preview || "No content"}</p>
-                    <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
-                      <span>V{note.version}</span>
-                      <span>{new Date(note.updated_at).toLocaleDateString()}</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </section>
+          <NoteEditor
+            note={selectedNote}
+            title={draft.title}
+            content={draft.content}
+            selectedTagIds={draft.tagIds}
+            tags={tags}
+            isSaving={isSavingState}
+            lastSavedAt={lastSavedAt}
+            autoSaveError={autoSaveError}
+            onTitleChange={(title) => {
+              setDraftForSelectedNote((prev) => ({ ...prev, title }));
+            }}
+            onContentChange={(content) => {
+              setDraftForSelectedNote((prev) => ({ ...prev, content }));
+            }}
+            onToggleTag={(tagId) => {
+              setDraftForSelectedNote((prev) => {
+                const exists = prev.tagIds.includes(tagId);
+                return {
+                  ...prev,
+                  tagIds: exists ? prev.tagIds.filter((id) => id !== tagId) : [...prev.tagIds, tagId],
+                };
+              });
+            }}
+            onDelete={handleDeleteSelected}
+            isDeleting={isDeleting}
+            className="min-h-0 border-0 xl:flex xl:h-full xl:flex-col"
+          />
+        </div>
 
-        <NoteEditor
-          note={selectedNote}
-          title={draft.title}
-          content={draft.content}
-          selectedTagIds={draft.tagIds}
-          tags={tags}
-          isSaving={isSavingState}
-          lastSavedAt={lastSavedAt}
-          autoSaveError={autoSaveError}
-          onTitleChange={(title) => {
-            setDraftForSelectedNote((prev) => ({ ...prev, title }));
-          }}
-          onContentChange={(content) => {
-            setDraftForSelectedNote((prev) => ({ ...prev, content }));
-          }}
-          onToggleTag={(tagId) => {
-            setDraftForSelectedNote((prev) => {
-              const exists = prev.tagIds.includes(tagId);
-              return {
-                ...prev,
-                tagIds: exists ? prev.tagIds.filter((id) => id !== tagId) : [...prev.tagIds, tagId],
-              };
-            });
-          }}
-          onDelete={handleDeleteSelected}
-          isDeleting={isDeleting}
-        />
+        <aside className="min-h-0 border-t border-border bg-background xl:border-l xl:border-t-0">
+          <div className="border-b border-border p-3">
+            <p className="text-xs text-muted-foreground">OUTLINE</p>
+            <h2 className="mt-1 line-clamp-1 text-sm font-bold text-foreground">{selectedNote?.title ?? "No note selected"}</h2>
+          </div>
+
+          <div className="space-y-4 p-3">
+            <section className="space-y-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-foreground">
+                <FolderOpen className="h-3.5 w-3.5" />
+                <span>{selectedFolderName}</span>
+              </div>
+              {selectedNote ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <Clock3 className="h-3.5 w-3.5" />
+                    <span>Updated {formatDateTime(selectedNote.updated_at)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Tags className="h-3.5 w-3.5" />
+                    <span>{draft.tagIds.length} {draft.tagIds.length === 1 ? "tag" : "tags"}</span>
+                  </div>
+                </>
+              ) : null}
+            </section>
+
+            <Separator />
+
+            <section>
+              <p className="mb-2 text-xs text-muted-foreground">HEADINGS</p>
+              {headings.length > 0 ? (
+                <nav className="space-y-1">
+                  {headings.map((heading) => (
+                    <button
+                      key={heading.id}
+                      type="button"
+                      className="flex w-full items-center gap-1 truncate border-l border-border py-1 pr-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                      style={{ paddingLeft: `${(heading.level - 1) * 14 + 8}px` }}
+                      title={heading.title}
+                    >
+                      {heading.level === 1 ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+                      <span className="truncate">{heading.title}</span>
+                    </button>
+                  ))}
+                </nav>
+              ) : (
+                <p className="border border-border bg-muted p-3 text-xs text-muted-foreground">
+                  Add headings to build note navigation.
+                </p>
+              )}
+            </section>
+
+            <Separator />
+
+            <section>
+              <p className="mb-2 text-xs text-muted-foreground">LINKS</p>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                <div className="flex items-center gap-2 border-l border-border px-2 py-1">
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>{selectedNote?.linked_note_ids.length ?? 0} linked notes</span>
+                </div>
+                <div className="flex items-center gap-2 border-l border-border px-2 py-1">
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>{previewText ? `${previewText.split(/\s+/).length} words` : "Empty note"}</span>
+                </div>
+              </div>
+            </section>
+          </div>
+        </aside>
       </div>
+      </section>
     </div>
   );
 }

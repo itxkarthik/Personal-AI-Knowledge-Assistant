@@ -14,8 +14,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui";
+import { cn } from "@/lib/utils/cn";
 
-export function Header() {
+interface HeaderProps {
+  sidebarExpanded: boolean;
+}
+
+export function Header({ sidebarExpanded }: HeaderProps) {
   const router = useRouter();
   const { logout } = useAuth();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -29,7 +34,12 @@ export function Header() {
   const currentTheme = theme === "system" ? resolvedTheme : theme;
 
   return (
-    <header className="fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur-0 lg:left-64">
+    <header
+      className={cn(
+        "fixed left-0 right-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur-0 transition-[left] duration-200",
+        sidebarExpanded ? "lg:left-64" : "lg:left-16"
+      )}
+    >
       <div className="flex h-16 items-center gap-4 px-4 lg:px-6">
         <div className="relative min-w-0 flex-1 max-w-2xl">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

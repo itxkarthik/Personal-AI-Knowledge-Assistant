@@ -53,7 +53,7 @@ export function TipTapEditor({ value, onChange, editable = true, className }: Ti
     editable,
     editorProps: {
       attributes: {
-        class: "min-h-[260px] max-h-[55vh] overflow-y-auto bg-background px-4 py-4 text-sm leading-7 text-foreground focus:outline-none",
+        class: "min-h-[520px] overflow-y-auto bg-background px-5 py-5 text-sm leading-7 text-foreground focus:outline-none lg:min-h-[calc(100dvh-21rem)] lg:max-h-[calc(100dvh-21rem)]",
       },
     },
     onUpdate: ({ editor: currentEditor }) => {
@@ -76,7 +76,7 @@ export function TipTapEditor({ value, onChange, editable = true, className }: Ti
   }
 
   return (
-    <div className={cn("overflow-hidden border border-border", className)}>
+    <div className={cn("overflow-hidden border border-border bg-background", className)}>
       <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted px-3 py-2">
         <ToolbarButton ariaLabel="Undo" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}>
           <Undo2 className="h-4 w-4" />

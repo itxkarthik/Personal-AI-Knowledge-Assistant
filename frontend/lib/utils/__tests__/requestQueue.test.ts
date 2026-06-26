@@ -40,13 +40,14 @@ describe('Offline Detection & Request Queueing', () => {
   });
 
   it('should execute queued requests in order', async () => {
-    const executed: string[] = [];
+    const executed: number[] = [];
 
     requestQueue.add('POST', '/api/notes', { data: { id: 1 } });
     requestQueue.add('POST', '/api/notes', { data: { id: 2 } });
 
     await requestQueue.execute(async (req) => {
-      executed.push(req.config.data.id);
+      const data = req.config.data as { id: number };
+      executed.push(data.id);
       return true;
     });
 

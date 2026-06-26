@@ -125,7 +125,7 @@ export const useNoteStore = create<NoteState>((set, get) => ({
 					selectedNote:
 						selectedNoteStillExists && state.selectedNote
 							? response.data.find((note) => note.id === state.selectedNote?.id) ?? null
-							: state.selectedNote,
+							: null,
 					isLoading: false,
 					filters: {
 						...state.filters,
