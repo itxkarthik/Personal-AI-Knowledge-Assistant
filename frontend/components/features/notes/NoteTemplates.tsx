@@ -10,21 +10,21 @@ const DEFAULT_NOTE_TEMPLATES: NoteTemplateData[] = [
     name: "Meeting Intel",
     description: "Structured capture for decisions, blockers, and follow-ups.",
     tags: ["meeting", "tasks"],
-    content: `<h2>Meeting Context</h2><p>Purpose:</p><p>Participants:</p><p>Date:</p><h3>Key Decisions</h3><ul><li></li></ul><h3>Action Items</h3><ul><li><strong>Owner:</strong>  <strong>Due:</strong> </li></ul><h3>Risks / Blockers</h3><ul><li></li></ul>`,
+    content: `## Meeting Context\n\nPurpose:\n\nParticipants:\n\nDate:\n\n### Key Decisions\n\n- \n\n### Action Items\n\n- **Owner:**  **Due:**\n\n### Risks / Blockers\n\n- `,
   },
   {
     id: "research",
     name: "Research Lab",
     description: "Hypothesis-driven template for experiments and findings.",
     tags: ["research", "analysis"],
-    content: `<h2>Research Question</h2><p></p><h3>Hypothesis</h3><p></p><h3>Findings</h3><ul><li></li></ul><h3>Evidence Links</h3><ul><li></li></ul><h3>Next Iteration</h3><p></p>`,
+    content: `## Research Question\n\n### Hypothesis\n\n### Findings\n\n- \n\n### Evidence Links\n\n- [[Related note]]\n\n### Next Iteration\n`,
   },
   {
     id: "study",
     name: "Study Sprint",
     description: "Learning notes with concepts, examples, and memory hooks.",
     tags: ["study", "learning"],
-    content: `<h2>Topic</h2><p></p><h3>Core Concepts</h3><ul><li></li></ul><h3>Examples</h3><ul><li></li></ul><h3>Flash Recall</h3><p>What should I remember tomorrow?</p>`,
+    content: `## Topic\n\n### Core Concepts\n\n- \n\n### Examples\n\n- \n\n### Flash Recall\n\nWhat should I remember tomorrow?`,
   },
 ];
 

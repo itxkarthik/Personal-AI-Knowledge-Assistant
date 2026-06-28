@@ -2,7 +2,7 @@
 
 import { Clock3, Save, Trash2 } from "lucide-react";
 
-import { TipTapEditor } from "@/components/editors/TipTapEditor";
+import { MarkdownEditor } from "@/components/editors/MarkdownEditor";
 import { cn } from "@/lib/utils/cn";
 import type { NoteResponse, NoteTag } from "@/types";
 
@@ -99,7 +99,7 @@ export function NoteEditor({
         })}
       </div>
 
-      <TipTapEditor value={content} onChange={onContentChange} className="min-h-0 flex-1" />
+      <MarkdownEditor value={content} onChange={onContentChange} className="min-h-0 flex-1" />
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-muted-foreground">
         <div className="inline-flex items-center gap-2">
@@ -117,7 +117,7 @@ export function NoteEditor({
             "No changes saved yet"
           )}
         </div>
-        {autoSaveError ? <span className="text-[#a50011]">{autoSaveError}</span> : <span>FORMAT: HTML · MODE: AUTOSAVE</span>}
+        {autoSaveError ? <span className="text-[#a50011]">{autoSaveError}</span> : <span>FORMAT: MARKDOWN · MODE: AUTOSAVE</span>}
       </div>
     </section>
   );

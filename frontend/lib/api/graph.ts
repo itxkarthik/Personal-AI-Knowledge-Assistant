@@ -1,4 +1,5 @@
-import { GraphData, GraphNode, GraphEdge } from '@/context/GraphContext';
+import type { GraphNode, GraphEdge } from "@/context/GraphContext";
+import { apiClient } from "@/lib/api/client";
 
 export interface GraphAllResponse {
   nodes: GraphNode[];
@@ -17,19 +18,8 @@ export interface GraphResponse {
  * Fetch the knowledge graph for a specific note (depth=1)
  */
 export async function fetchNoteGraph(noteId: number): Promise<GraphResponse> {
-  const response = await fetch(`/api/v1/notes/${noteId}/graph`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch note graph: ${response.statusText}`);
-  }
-
-  return response.json();
+  const response = await apiClient.get<GraphResponse>(`/notes/${noteId}/graph`);
+  return response.data;
 }
 
 /**
@@ -44,19 +34,12 @@ export async function fetchFullGraph(
     offset: offset.toString(),
   });
 
-  const response = await fetch(`/api/v1/notes/graph/all?${params}`, {
-    method: 'GET',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  const response = await apiClient.get<GraphAllResponse>(`/notes/graph/all?${params}`);
+  return response.data;
+}
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch full graph: ${response.statusText}`);
-  }
-
-  return response.json();
+export async function rebuildGraphFromWikiLinks(): Promise<void> {
+  await apiClient.post("/notes/graph/rebuild");
 }
 
 /**
@@ -75,32 +58,12 @@ export async function createNoteLink(
     params.append('description', description);
   }
 
-  const response = await fetch(`/api/v1/notes/${sourceId}/links/${targetId}?${params}`, {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to create link: ${response.statusText}`);
-  }
+  await apiClient.post(`/notes/${sourceId}/links/${targetId}?${params}`);
 }
 
 /**
  * Delete a link between two notes
  */
 export async function deleteNoteLink(sourceId: number, targetId: number): Promise<void> {
-  const response = await fetch(`/api/v1/notes/${sourceId}/links/${targetId}`, {
-    method: 'DELETE',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Failed to delete link: ${response.statusText}`);
-  }
+  await apiClient.delete(`/notes/${sourceId}/links/${targetId}`);
 }

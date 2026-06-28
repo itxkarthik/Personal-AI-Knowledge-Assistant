@@ -38,24 +38,31 @@ export const GraphView: React.FC<GraphViewProps> = ({ onNodeClick }) => {
 
     const rootStyle = getComputedStyle(document.documentElement);
     const palette = {
-      foreground: rootStyle.getPropertyValue("--foreground").trim() || "#201d1d",
-      mutedForeground: rootStyle.getPropertyValue("--muted-foreground").trim() || "#646262",
-      border: rootStyle.getPropertyValue("--border").trim() || "rgba(15, 0, 0, 0.12)",
+      foreground: rootStyle.getPropertyValue("--ink").trim() || "#201d1d",
+      mutedForeground: rootStyle.getPropertyValue("--mute").trim() || "#646262",
+      border: rootStyle.getPropertyValue("--hairline-strong").trim() || "#646262",
     };
 
     const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+    const degreeByNodeId = new Map<number, number>();
+    filteredEdges.forEach((edge) => {
+      degreeByNodeId.set(edge.source_note_id, (degreeByNodeId.get(edge.source_note_id) ?? 0) + 1);
+      degreeByNodeId.set(edge.target_note_id, (degreeByNodeId.get(edge.target_note_id) ?? 0) + 1);
+    });
 
     const nodeElements: cytoscape.ElementDefinition[] = visibleNodes.map((node) => ({
         data: {
           id: node.id.toString(),
           label: node.title,
           color: node.color || palette.mutedForeground,
+          size: Math.min(44, 18 + (degreeByNodeId.get(node.id) ?? 0) * 4),
         },
       classes: [
         node.is_favorite ? "favorite" : "",
         node.is_pinned ? "pinned" : "",
         node.is_archived ? "archived" : "",
-        node.id === selectedNodeId ? "selected" : "",
+        node.id === graphData.center_node_id ? "center" : "",
+        (degreeByNodeId.get(node.id) ?? 0) === 0 ? "unconnected" : "",
       ]
         .filter(Boolean)
         .join(" "),
@@ -89,17 +96,19 @@ export const GraphView: React.FC<GraphViewProps> = ({ onNodeClick }) => {
             "border-color": palette.border,
             "border-width": 2,
             color: palette.foreground,
+            label: "data(label)",
             "font-size": 11,
             "text-halign": "center",
-            "text-valign": "center",
-            width: 48,
-            height: 48,
+            width: "data(size)",
+            height: "data(size)",
             "text-wrap": "wrap",
-            "text-max-width": "44",
+            "text-max-width": "110",
+            "text-valign": "bottom",
+            "text-margin-y": 9,
           },
         },
         {
-          selector: "node.selected",
+          selector: "node.selected, node.center",
           style: {
             "border-width": 3,
             "border-color": palette.foreground,
@@ -112,19 +121,18 @@ export const GraphView: React.FC<GraphViewProps> = ({ onNodeClick }) => {
           },
         },
         {
-          selector: "edge",
+          selector: "node.unconnected",
           style: {
-            "line-color": palette.mutedForeground,
-            "target-arrow-color": palette.mutedForeground,
-            "target-arrow-shape": "triangle",
-            width: 1.5,
-            opacity: 0.8,
+            opacity: 0.55,
           },
         },
         {
-          selector: "edge.referenced",
+          selector: "edge",
           style: {
-            "line-style": "dashed",
+            "line-color": palette.mutedForeground,
+            width: 1.5,
+            opacity: 0.8,
+            "curve-style": "bezier",
           },
         },
         {
@@ -143,9 +151,16 @@ export const GraphView: React.FC<GraphViewProps> = ({ onNodeClick }) => {
       } as cytoscape.LayoutOptions,
       wheelSensitivity: 0.1,
       autoungrabify: false,
+      minZoom: 0.15,
+      maxZoom: 1.75,
     });
 
     cyRef.current = cy;
+
+    const resizeObserver = new ResizeObserver(() => {
+      cy.resize();
+    });
+    resizeObserver.observe(containerRef.current);
 
     cy.on("tap", "node", (event) => {
       const node = event.target;
@@ -172,16 +187,28 @@ export const GraphView: React.FC<GraphViewProps> = ({ onNodeClick }) => {
         window.clearTimeout(fitTimerRef.current);
         fitTimerRef.current = null;
       }
+      resizeObserver.disconnect();
       cy.destroy();
       if (cyRef.current === cy) {
         cyRef.current = null;
       }
     };
-  }, [graphData, visibleNodes, filteredEdges, selectedNodeId, setSelectedNodeId, onNodeClick]);
+  }, [graphData, visibleNodes, filteredEdges, setSelectedNodeId, onNodeClick]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.nodes().removeClass("selected");
+    if (selectedNodeId !== null) {
+      cy.getElementById(selectedNodeId.toString()).addClass("selected");
+    }
+  }, [selectedNodeId]);
 
   return (
-    <section className="relative min-h-[640px] w-full overflow-hidden border border-border bg-background">
-      <div ref={containerRef} className="absolute inset-0" />
+    <section className="relative min-h-[680px] w-full overflow-hidden border border-border bg-background lg:min-h-[calc(100dvh-9.5rem)]">
+      <div className="absolute inset-0">
+        <div ref={containerRef} className="h-full w-full" />
+      </div>
 
       <div className="absolute right-4 top-4 flex gap-2">
         <Button

@@ -9,29 +9,13 @@ import { Separator } from "@/components/ui";
 import { listNotes } from "@/lib/api/notes";
 import { useAutoSave } from "@/lib/hooks/useAutoSave";
 import { useNotes } from "@/lib/hooks/useNotes";
+import {
+  ensureMarkdown,
+  extractMarkdownHeadings,
+  extractWikiLinkTitles,
+  markdownToPlainText,
+} from "@/lib/markdown";
 import type { NoteResponse } from "@/types";
-
-function stripHtmlTags(content: string): string {
-  return content.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-interface NoteHeading {
-  id: string;
-  title: string;
-  level: number;
-}
-
-function extractHeadings(content: string): NoteHeading[] {
-  const matches = Array.from(content.matchAll(/<h[1-3][^>]*>(.*?)<\/h[1-3]>/gi));
-  return matches
-    .map((match, index) => ({
-      id: `heading-${index}`,
-      title: stripHtmlTags(match[1]),
-      level: Number(match[0].slice(2, 3)),
-    }))
-    .filter((heading) => heading.title)
-    .slice(0, 16);
-}
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat(undefined, {
@@ -50,14 +34,14 @@ type DraftState = {
 
 const EMPTY_DRAFT: DraftState = {
   title: "",
-  content: "<p></p>",
+  content: "",
   tagIds: [],
 };
 
 function draftFromNote(note: NoteResponse): DraftState {
   return {
     title: note.title,
-    content: note.content || "<p></p>",
+    content: ensureMarkdown(note.content || "", note.content_type),
     tagIds: note.tag_ids ?? [],
   };
 }
@@ -84,13 +68,28 @@ export default function NotesPage() {
     setFolderFilter,
     setTagFilter,
     clearError,
+    fetchNoteById,
   } = useNotes();
 
   const [draftsByNoteId, setDraftsByNoteId] = useState<Record<number, DraftState>>({});
   const [isCreatingNote, setIsCreatingNote] = useState(false);
   const [vaultNotes, setVaultNotes] = useState<NoteResponse[]>([]);
   const [isVaultLoading, setIsVaultLoading] = useState(false);
+  const [requestedNoteId, setRequestedNoteId] = useState<number | null>(null);
   const deletingNoteIdsRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    const value = new URLSearchParams(window.location.search).get("note");
+    const noteId = value ? Number(value) : null;
+    setRequestedNoteId(noteId && Number.isInteger(noteId) ? noteId : null);
+  }, []);
+
+  useEffect(() => {
+    if (requestedNoteId === null || isLoading) return;
+
+    setRequestedNoteId(null);
+    void fetchNoteById(requestedNoteId);
+  }, [fetchNoteById, isLoading, requestedNoteId]);
 
   const draft = useMemo(() => {
     if (!selectedNote) {
@@ -157,8 +156,8 @@ export default function NotesPage() {
 
       await updateNoteById(selectedNote.id, {
         title: value.title.trim() || "Untitled note",
-        content: value.content || "<p></p>",
-        content_type: "html",
+        content: value.content.trim() || "Start writing...",
+        content_type: "markdown",
         tag_ids: value.tagIds,
         folder_id: selectedNote.folder_id ?? null,
       });
@@ -181,8 +180,8 @@ export default function NotesPage() {
     try {
       const created = await createNote({
         title: "Untitled note",
-        content: "<p>Start writing...</p>",
-        content_type: "html",
+        content: "Start writing...",
+        content_type: "markdown",
         folder_id: folderId,
         is_pinned: false,
         is_favorite: false,
@@ -240,9 +239,41 @@ export default function NotesPage() {
     return folders.find((folder) => folder.id === filters.folderId)?.name ?? "Folder";
   }, [filters.folderId, folders]);
 
-  const headings = useMemo(() => extractHeadings(draft.content), [draft.content]);
-  const previewText = useMemo(() => stripHtmlTags(draft.content), [draft.content]);
   const treeNotes = vaultNotes.length > 0 ? vaultNotes : notes;
+  const headings = useMemo(() => extractMarkdownHeadings(draft.content), [draft.content]);
+  const previewText = useMemo(() => markdownToPlainText(draft.content), [draft.content]);
+  const wikiLinkTitles = useMemo(() => extractWikiLinkTitles(draft.content), [draft.content]);
+  const linkedNotes = useMemo(
+    () =>
+      wikiLinkTitles
+        .map((title) => treeNotes.find((note) => note.title.toLocaleLowerCase() === title.toLocaleLowerCase()))
+        .filter((note): note is NoteResponse => Boolean(note)),
+    [treeNotes, wikiLinkTitles]
+  );
+  const backlinks = useMemo(
+    () =>
+      selectedNote
+        ? treeNotes.filter(
+            (note) => note.id !== selectedNote.id && note.linked_note_ids.includes(selectedNote.id)
+          )
+        : [],
+    [selectedNote, treeNotes]
+  );
+
+  const selectLinkedNote = useCallback(
+    (note: NoteResponse) => {
+      setFolderFilter(note.folder_id ?? null);
+      setSelectedNote(note);
+    },
+    [setFolderFilter, setSelectedNote]
+  );
+
+  const navigateToHeading = useCallback(
+    (offset: number) => {
+      window.dispatchEvent(new CustomEvent<number>("note-editor:navigate", { detail: offset }));
+    },
+    []
+  );
 
   return (
     <div className="space-y-3">
@@ -352,6 +383,7 @@ export default function NotesPage() {
                     <button
                       key={heading.id}
                       type="button"
+                      onClick={() => navigateToHeading(heading.offset)}
                       className="flex w-full items-center gap-1 truncate border-l border-border py-1 pr-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                       style={{ paddingLeft: `${(heading.level - 1) * 14 + 8}px` }}
                       title={heading.title}
@@ -373,14 +405,57 @@ export default function NotesPage() {
             <section>
               <p className="mb-2 text-xs text-muted-foreground">LINKS</p>
               <div className="space-y-1 text-xs text-muted-foreground">
-                <div className="flex items-center gap-2 border-l border-border px-2 py-1">
-                  <FileText className="h-3.5 w-3.5" />
-                  <span>{selectedNote?.linked_note_ids.length ?? 0} linked notes</span>
-                </div>
+                {wikiLinkTitles.length > 0 ? wikiLinkTitles.map((title) => {
+                  const linkedNote = linkedNotes.find(
+                    (note) => note.title.toLocaleLowerCase() === title.toLocaleLowerCase()
+                  );
+                  return linkedNote ? (
+                    <button
+                      key={title}
+                      type="button"
+                      onClick={() => selectLinkedNote(linkedNote)}
+                      className="flex w-full items-center gap-2 border-l border-border px-2 py-1 text-left hover:bg-muted hover:text-foreground"
+                    >
+                      <FileText className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{linkedNote.title}</span>
+                    </button>
+                  ) : (
+                    <div key={title} className="flex items-center gap-2 border-l border-border px-2 py-1 opacity-60">
+                      <FileText className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{title}</span>
+                    </div>
+                  );
+                }) : (
+                  <div className="flex items-center gap-2 border-l border-border px-2 py-1">
+                    <FileText className="h-3.5 w-3.5" />
+                    <span>No outgoing links</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-2 border-l border-border px-2 py-1">
                   <FileText className="h-3.5 w-3.5" />
                   <span>{previewText ? `${previewText.split(/\s+/).length} words` : "Empty note"}</span>
                 </div>
+              </div>
+            </section>
+
+            <Separator />
+
+            <section>
+              <p className="mb-2 text-xs text-muted-foreground">BACKLINKS</p>
+              <div className="space-y-1 text-xs text-muted-foreground">
+                {backlinks.length > 0 ? backlinks.map((note) => (
+                  <button
+                    key={note.id}
+                    type="button"
+                    onClick={() => selectLinkedNote(note)}
+                    className="flex w-full items-center gap-2 border-l border-border px-2 py-1 text-left hover:bg-muted hover:text-foreground"
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">{note.title}</span>
+                  </button>
+                )) : (
+                  <p className="border-l border-border px-2 py-1">No backlinks</p>
+                )}
               </div>
             </section>
           </div>

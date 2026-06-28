@@ -27,6 +27,7 @@ from app.services.note_service import (
     list_folders,
     list_notes,
     list_tags,
+    rebuild_wiki_links,
     soft_delete_note,
     update_note,
 )
@@ -215,6 +216,20 @@ def create_tag_endpoint(*, session: SessionDep, current_user: CurrentUser, body:
 
 
 # ==================== Knowledge Graph Endpoints ====================
+
+
+@router.post(
+    path="/graph/rebuild",
+    response_model=Message,
+    responses={
+        401: {"model": StandardErrorResponse, "description": "Authentication required"},
+        500: {"model": StandardErrorResponse, "description": "Internal server error"},
+    },
+)
+def rebuild_graph_endpoint(*, session: SessionDep, current_user: CurrentUser) -> Any:
+    """Rebuild graph edges from Obsidian-style wiki links in note content."""
+    added, removed = rebuild_wiki_links(session=session, current_user=current_user)
+    return Message(message=f"Graph rebuilt: {added} links added, {removed} removed")
 
 
 @router.get(

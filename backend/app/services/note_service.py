@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.models.document import Document
-from app.models.note import NoteFolders, NoteLinks, Notes, NoteTags
+from app.models.note import NoteFolders, NoteLinks, NoteLinkType, Notes, NoteTags
 from app.models.user import User
 from app.schemas.note import FolderCreate, NoteCreate, NoteUpdate, TagCreate
 from app.utils.sanitization import strip_all_html
-from app.utils.text_processing import clean_text, create_content_preview
+from app.utils.text_processing import (
+    create_content_preview,
+    extract_wiki_link_titles,
+    markdown_to_plain_text,
+    normalize_markdown,
+)
 from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
@@ -21,10 +26,12 @@ def create_note(*, session: Session, current_user: User, payload: NoteCreate) ->
     )
 
     clean_content = (
-        payload.content if payload.content_type == "html" else clean_text(payload.content)
+        payload.content if payload.content_type == "html" else normalize_markdown(payload.content)
     )
     preview_source = (
-        strip_all_html(clean_content) if payload.content_type == "html" else clean_content
+        strip_all_html(clean_content)
+        if payload.content_type == "html"
+        else markdown_to_plain_text(clean_content)
     )
     note = Notes(
         user_id=current_user.id,
@@ -61,6 +68,13 @@ def create_note(*, session: Session, current_user: User, payload: NoteCreate) ->
             source_note_id=note.id,
             target_note_ids=payload.linked_note_ids,
         )
+
+    sync_wiki_links(
+        session=session,
+        current_user=current_user,
+        source_note_id=note.id,
+        content=clean_content,
+    )
 
     return get_note_by_id(session=session, current_user=current_user, note_id=note.id)
 
@@ -187,8 +201,12 @@ def update_note(
             continue
         if field_name == "content" and value is not None:
             resolved_content_type = update_data.get("content_type", note.content_type)
-            cleaned = value if resolved_content_type == "html" else clean_text(value)
-            preview_source = strip_all_html(cleaned) if resolved_content_type == "html" else cleaned
+            cleaned = value if resolved_content_type == "html" else normalize_markdown(value)
+            preview_source = (
+                strip_all_html(cleaned)
+                if resolved_content_type == "html"
+                else markdown_to_plain_text(cleaned)
+            )
             note.content = cleaned
             note.content_preview = create_content_preview(preview_source, max_length=200)
             note.word_count = len(preview_source.split())
@@ -221,6 +239,14 @@ def update_note(
             current_user=current_user,
             source_note_id=note.id,
             target_note_ids=payload.linked_note_ids,
+        )
+
+    if payload.content is not None:
+        sync_wiki_links(
+            session=session,
+            current_user=current_user,
+            source_note_id=note.id,
+            content=note.content,
         )
 
     return get_note_by_id(session=session, current_user=current_user, note_id=note.id)
@@ -395,6 +421,78 @@ def sync_note_links(
     session.commit()
 
 
+def sync_wiki_links(
+    *, session: Session, current_user: User, source_note_id: int, content: str
+) -> tuple[int, int]:
+    """Synchronize Obsidian-style [[Note title]] links for one note."""
+    source_note = get_note_by_id(session=session, current_user=current_user, note_id=source_note_id)
+    requested_titles = {title.casefold() for title in extract_wiki_link_titles(content)}
+    user_notes = session.exec(
+        select(Notes).where(
+            Notes.user_id == current_user.id,
+            Notes.is_deleted.is_not(True),
+        )
+    ).all()
+    target_ids = {
+        note.id
+        for note in user_notes
+        if note.id != source_note.id and note.title.casefold() in requested_titles
+    }
+
+    existing_links = session.exec(
+        select(NoteLinks).where(NoteLinks.source_note_id == source_note.id)
+    ).all()
+    referenced_links = [
+        link for link in existing_links if link.link_type == NoteLinkType.referenced
+    ]
+    existing_pairs = {(link.source_note_id, link.target_note_id) for link in existing_links}
+    removed = 0
+    added = 0
+
+    for link in referenced_links:
+        if link.target_note_id not in target_ids:
+            session.delete(link)
+            removed += 1
+
+    for target_id in target_ids:
+        if (source_note.id, target_id) not in existing_pairs:
+            session.add(
+                NoteLinks(
+                    source_note_id=source_note.id,
+                    target_note_id=target_id,
+                    link_type=NoteLinkType.referenced,
+                )
+            )
+            added += 1
+
+    if added or removed:
+        session.commit()
+
+    return added, removed
+
+
+def rebuild_wiki_links(*, session: Session, current_user: User) -> tuple[int, int]:
+    """Rebuild wiki-link edges for all active notes owned by a user."""
+    notes = session.exec(
+        select(Notes).where(
+            Notes.user_id == current_user.id,
+            Notes.is_deleted.is_not(True),
+        )
+    ).all()
+    added = 0
+    removed = 0
+    for note in notes:
+        note_added, note_removed = sync_wiki_links(
+            session=session,
+            current_user=current_user,
+            source_note_id=note.id,
+            content=note.content,
+        )
+        added += note_added
+        removed += note_removed
+    return added, removed
+
+
 def link_note_to_document(
     *, session: Session, current_user: User, note_id: int, document_id: int | None
 ) -> Notes:
@@ -407,27 +505,30 @@ def link_note_to_document(
     return note
 
 
-def get_note_graph(*, session: Session, current_user: User, note_id: int) -> tuple[list[Notes], list[NoteLinks]]:
+def get_note_graph(
+    *, session: Session, current_user: User, note_id: int
+) -> tuple[list[Notes], list[NoteLinks]]:
     """
     Get a note and all its connected notes (depth=1).
     Returns a tuple of (nodes, edges) for knowledge graph visualization.
     """
     # Get the center note
     center_note = get_note_by_id(session=session, current_user=current_user, note_id=note_id)
-    
+
     # Get all outbound links (source_links) and inbound links (target_links)
     all_links = session.exec(
         select(NoteLinks).where(
-            (NoteLinks.source_note_id == center_note.id) | (NoteLinks.target_note_id == center_note.id)
+            (NoteLinks.source_note_id == center_note.id)
+            | (NoteLinks.target_note_id == center_note.id)
         )
     ).all()
-    
+
     # Collect all connected note IDs
     connected_ids = {center_note.id}
     for link in all_links:
         connected_ids.add(link.source_note_id)
         connected_ids.add(link.target_note_id)
-    
+
     # Get all connected notes
     nodes = session.exec(
         select(Notes).where(
@@ -436,7 +537,7 @@ def get_note_graph(*, session: Session, current_user: User, note_id: int) -> tup
             Notes.is_deleted.is_not(True),
         )
     ).all()
-    
+
     return nodes, all_links
 
 
@@ -458,9 +559,9 @@ def get_full_user_graph(
         .limit(limit)
         .offset(offset)
     ).all()
-    
+
     node_ids = {node.id for node in nodes}
-    
+
     # Get all links where both source and target are in the nodes list
     edges = session.exec(
         select(NoteLinks).where(
@@ -468,22 +569,27 @@ def get_full_user_graph(
             NoteLinks.target_note_id.in_(node_ids),
         )
     ).all()
-    
+
     return nodes, edges
 
 
 def create_note_link(
-    *, session: Session, current_user: User, source_note_id: int, target_note_id: int, 
-    link_type: str = "related", description: str | None = None
+    *,
+    session: Session,
+    current_user: User,
+    source_note_id: int,
+    target_note_id: int,
+    link_type: str = "related",
+    description: str | None = None,
 ) -> NoteLinks:
     """Create a link between two notes."""
     # Verify both notes belong to the user
     source = get_note_by_id(session=session, current_user=current_user, note_id=source_note_id)
     target = get_note_by_id(session=session, current_user=current_user, note_id=target_note_id)
-    
+
     if source_note_id == target_note_id:
         raise HTTPException(status_code=400, detail="Cannot link a note to itself")
-    
+
     # Check if link already exists
     existing = session.exec(
         select(NoteLinks).where(
@@ -491,10 +597,10 @@ def create_note_link(
             NoteLinks.target_note_id == target_note_id,
         )
     ).first()
-    
+
     if existing:
         raise HTTPException(status_code=409, detail="Link already exists")
-    
+
     link = NoteLinks(
         source_note_id=source_note_id,
         target_note_id=target_note_id,
@@ -514,17 +620,17 @@ def delete_note_link(
     # Verify both notes belong to the user
     get_note_by_id(session=session, current_user=current_user, note_id=source_note_id)
     get_note_by_id(session=session, current_user=current_user, note_id=target_note_id)
-    
+
     link = session.exec(
         select(NoteLinks).where(
             NoteLinks.source_note_id == source_note_id,
             NoteLinks.target_note_id == target_note_id,
         )
     ).first()
-    
+
     if not link:
         raise HTTPException(status_code=404, detail="Link not found")
-    
+
     session.delete(link)
     session.commit()
 
