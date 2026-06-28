@@ -41,7 +41,7 @@ export const dashboardQuickActions: DashboardLinkItem[] = [
 	{
 		title: "Create Note",
 		description: "Capture a new idea before it gets lost.",
-		href: "/dashboard/notes/new",
+		href: "/dashboard/notes",
 		icon: NotebookPen,
 	},
 	{

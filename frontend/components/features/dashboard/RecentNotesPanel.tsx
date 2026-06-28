@@ -69,7 +69,7 @@ export function RecentNotesPanel({
           {notes.map((note) => (
             <li key={note.id}>
               <Link
-                href={`/dashboard/notes/${note.id}`}
+                href={`/dashboard/notes?note=${note.id}`}
                 className="block rounded-xl border border-outline-variant/30 p-3 transition hover:border-outline-variant/60 hover:bg-surface-container-highest"
               >
                 <div className="flex items-center justify-between gap-3">
