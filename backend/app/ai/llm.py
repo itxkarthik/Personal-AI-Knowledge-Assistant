@@ -5,11 +5,10 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from sqlmodel import Session
-
-from app.ai.http_client import get_llm_client
+from app.ai.http_client import create_llm_client
 from app.core.config import settings
-from app.models.user import UserSettings
+from app.models.user import LlmProvider, UserSettings
+from sqlmodel import Session
 
 ChatMessage = dict[str, str]
 
@@ -65,11 +64,10 @@ class OllamaLLMProvider:
             stream=False,
         )
 
-        # Use pooled HTTP client instead of creating new one per request
-        client = await get_llm_client(timeout=self.timeout_seconds)
-        response = await client.post(f"{self.base_url}/api/chat", json=payload)
-        response.raise_for_status()
-        data = response.json()
+        async with create_llm_client(timeout=self.timeout_seconds) as client:
+            response = await client.post(f"{self.base_url}/api/chat", json=payload)
+            response.raise_for_status()
+            data = response.json()
 
         message = data.get("message")
         if not isinstance(message, dict):
@@ -97,20 +95,19 @@ class OllamaLLMProvider:
             stream=True,
         )
 
-        # Use pooled HTTP client instead of creating new one per request
-        client = await get_llm_client(timeout=self.timeout_seconds)
-        async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-            response.raise_for_status()
-            async for line in response.aiter_lines():
-                if not line:
-                    continue
-                data = json.loads(line)
-                message = data.get("message")
-                if not isinstance(message, dict):
-                    continue
-                chunk = message.get("content")
-                if isinstance(chunk, str) and chunk:
-                    yield chunk
+        async with create_llm_client(timeout=self.timeout_seconds) as client:
+            async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
+                response.raise_for_status()
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    data = json.loads(line)
+                    message = data.get("message")
+                    if not isinstance(message, dict):
+                        continue
+                    chunk = message.get("content")
+                    if isinstance(chunk, str) and chunk:
+                        yield chunk
 
     @staticmethod
     def _build_payload(
@@ -138,13 +135,29 @@ def resolve_llm_config(
     user_id: int,
     provider: str | None = None,
     model: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
 ) -> LLMConfig:
     user_settings = session.get(UserSettings, user_id)
 
-    resolved_provider = provider or (str(user_settings.llm_provider) if user_settings else "ollama")
-    resolved_model = model or (user_settings.llm_model if user_settings else "tinyllama")
-    temperature = user_settings.temperature if user_settings else 0.7
-    max_tokens = user_settings.max_tokens if user_settings else 1000
+    resolved_provider = provider or (
+        user_settings.llm_provider.value
+        if user_settings and isinstance(user_settings.llm_provider, LlmProvider)
+        else (str(user_settings.llm_provider) if user_settings else "ollama")
+    )
+    resolved_model = model or (
+        user_settings.llm_model if user_settings else settings.OLLAMA_CHAT_MODEL
+    )
+    resolved_temperature = (
+        temperature
+        if temperature is not None
+        else (user_settings.temperature if user_settings else 0.7)
+    )
+    resolved_max_tokens = (
+        max_tokens
+        if max_tokens is not None
+        else (user_settings.max_tokens if user_settings else 1000)
+    )
 
     if resolved_provider != "ollama":
         raise ValueError(
@@ -154,8 +167,8 @@ def resolve_llm_config(
     return LLMConfig(
         provider=resolved_provider,
         model=resolved_model,
-        temperature=temperature,
-        max_tokens=max_tokens,
+        temperature=resolved_temperature,
+        max_tokens=resolved_max_tokens,
     )
 
 
@@ -171,12 +184,16 @@ class LLMService:
         messages: Sequence[ChatMessage],
         provider: str | None = None,
         model: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> str:
         config = resolve_llm_config(
             session=self.session,
             user_id=self.user_id,
             provider=provider,
             model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         return await self.provider.complete(
             messages=messages,
@@ -212,19 +229,26 @@ def build_chat_messages(
     user_prompt: str,
     context_chunks: Sequence[str] | None = None,
     system_prompt: str | None = None,
+    conversation_history: Sequence[ChatMessage] | None = None,
 ) -> list[ChatMessage]:
     messages: list[ChatMessage] = []
+    system_parts: list[str] = []
     if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
+        system_parts.append(system_prompt)
+    if system_parts:
+        messages.append({"role": "system", "content": "\n\n".join(system_parts)})
+
+    if conversation_history:
+        messages.extend(conversation_history)
 
     if context_chunks:
         combined_context = "\n\n".join(context_chunks)
-        messages.append(
-            {
-                "role": "system",
-                "content": f"Use the following context to answer the user:\n\n{combined_context}",
-            }
+        final_prompt = (
+            "REFERENCE CONTEXT (use internally; do not repeat it in full):\n"
+            f"{combined_context}\n\nCURRENT QUESTION:\n{user_prompt}\n\nDIRECT ANSWER:"
         )
+    else:
+        final_prompt = user_prompt
 
-    messages.append({"role": "user", "content": user_prompt})
+    messages.append({"role": "user", "content": final_prompt})
     return messages

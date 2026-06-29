@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from sqlmodel import Session
-
-from app.ai.http_client import get_embedding_client
+from app.ai.http_client import create_embedding_client
 from app.core.config import settings
 from app.models.user import UserSettings
+from sqlmodel import Session
 
-DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
+DEFAULT_EMBEDDING_MODEL = settings.OLLAMA_EMBEDDING_MODEL
 
 
 def resolve_embedding_model(
@@ -38,11 +37,10 @@ class OllamaEmbeddingClient:
             "input": list(texts),
         }
 
-        # Use pooled HTTP client instead of creating new one per request
-        client = await get_embedding_client(timeout=self.timeout_seconds)
-        response = await client.post(f"{self.base_url}/api/embed", json=payload)
-        response.raise_for_status()
-        data = response.json()
+        async with create_embedding_client(timeout=self.timeout_seconds) as client:
+            response = await client.post(f"{self.base_url}/api/embed", json=payload)
+            response.raise_for_status()
+            data = response.json()
 
         embeddings = data.get("embeddings")
         if embeddings is None and data.get("embedding") is not None:

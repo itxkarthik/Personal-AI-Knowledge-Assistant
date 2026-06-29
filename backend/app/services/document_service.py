@@ -21,6 +21,13 @@ from sqlmodel import Session, col, or_, select
 logger = logging.getLogger(__name__)
 
 
+def _remove_uploaded_file(file_path: str) -> None:
+    try:
+        Path(file_path).unlink(missing_ok=True)
+    except OSError:
+        logger.exception("Failed to remove uploaded file", extra={"file_path": file_path})
+
+
 def _mark_document_failed(*, session: Session, document_id: int | None, reason: str) -> None:
     try:
         session.rollback()
@@ -131,6 +138,7 @@ async def upload_and_process_document(
         session.refresh(document)
         return document
     except HTTPException:
+        _remove_uploaded_file(saved_path)
         _mark_document_failed(
             session=session,
             document_id=document.id,
@@ -142,6 +150,7 @@ async def upload_and_process_document(
             "Document processing failed",
             extra={"document_id": document.id, "user_id": current_user.id},
         )
+        _remove_uploaded_file(saved_path)
         _mark_document_failed(
             session=session,
             document_id=document.id,

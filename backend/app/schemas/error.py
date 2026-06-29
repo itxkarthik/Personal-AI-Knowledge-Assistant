@@ -21,6 +21,7 @@ class ErrorCode(str, Enum):
     # Server errors (5xx)
     INTERNAL_SERVER_ERROR = "internal_server_error"
     SERVICE_UNAVAILABLE = "service_unavailable"
+    AI_SERVICE_UNAVAILABLE = "ai_service_unavailable"
     DATABASE_ERROR = "database_error"
     EXTERNAL_SERVICE_ERROR = "external_service_error"
 

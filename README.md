@@ -9,6 +9,7 @@ A self-hosted workspace for Markdown notes, documents, knowledge graphs, and con
 - Full and local knowledge graph views
 - Nested note folders and tags
 - PDF, DOCX, Markdown, and text document ingestion
+- Contextual chat across uploaded documents and Markdown notes
 - Authenticated, user-isolated workspaces
 - Optional local model integration through Ollama
 
@@ -66,7 +67,59 @@ The main settings are:
 | `FRONTEND_HOST` | Allowed frontend origin |
 | `OLLAMA_BASE_URL` | Optional Ollama endpoint |
 
-Ollama is optional for notes, documents, authentication, and graph features. AI requests require a reachable Ollama server and an installed model.
+Ollama is optional for notes, document extraction, authentication, and graph features. The default stack stays lightweight and reports AI as unavailable without writing placeholder chat messages.
+
+### Run with local AI
+
+Start the stack with the optional Ollama profile:
+
+```bash
+docker compose --profile ai up --build -d
+```
+
+The profile starts Ollama and installs `llama3.2:1b` for chat plus `nomic-embed-text` for document and note embeddings. The first startup takes longer while those models download; follow progress with:
+
+```bash
+docker compose logs -f ollama-models
+```
+
+Model data is retained in the `ollama_data` volume. Override `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBEDDING_MODEL`, or `OLLAMA_BASE_URL` when using a different local runtime.
+
+### Change models
+
+Signed-in users can choose any installed chat model from **Settings > Local AI model**. The selection is saved per account and takes effect on the next chat response.
+
+`OLLAMA_CHAT_MODEL` and `OLLAMA_EMBEDDING_MODEL` set the Docker defaults for users who have no saved preference. Put overrides in `.env.docker`:
+
+```bash
+OLLAMA_CHAT_MODEL=gemma3:1b
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+```
+
+Start Compose with that environment file:
+
+```bash
+docker compose --env-file .env.docker --profile ai up --build -d
+```
+
+Before assigning a different model to one account, install it in the shared Ollama volume:
+
+```bash
+docker compose exec ollama ollama pull gemma3:1b
+```
+
+Then save the per-user preference by email:
+
+```bash
+docker compose exec backend python -m scripts.set_user_model --email you@example.com --chat-model gemma3:1b
+```
+
+The account preference overrides the Docker default. Omit `--embedding-model` to keep `nomic-embed-text`; changing embedding dimensions requires rebuilding the vector indexes. Confirm the active Docker defaults and installed models with:
+
+```bash
+curl http://localhost:3000/health/ready
+docker compose exec ollama ollama list
+```
 
 ## Notes and Graphs
 
@@ -110,6 +163,7 @@ frontend/node_modules/.bin/vitest run
 docker compose build frontend backend
 docker compose up -d
 docker compose ps
+curl http://localhost:3000/health/ready
 ```
 
 ## Architecture

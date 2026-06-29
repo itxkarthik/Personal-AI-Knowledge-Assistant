@@ -5,7 +5,8 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 
 from app.ai.rag import run_rag_pipeline
-from app.models.chat import ChatMessages, ChatSession
+from app.core.exceptions import AIServiceUnavailableError
+from app.models.chat import ChatMessages, ChatRole, ChatSession
 from app.models.note import Notes
 from app.models.user import User
 from app.schemas.chat import ChatCreate, ChatMessageCreate
@@ -89,26 +90,32 @@ def send_message_and_get_response(
         chat_session_id=chat_session_id,
     )
 
+    try:
+        rag_answer, rag_sources = _invoke_rag(
+            session=session,
+            current_user=current_user,
+            query=payload.content,
+            conversation_history=[
+                {
+                    "role": message.role.value
+                    if isinstance(message.role, ChatRole)
+                    else str(message.role),
+                    "content": message.content,
+                }
+                for message in getattr(chat_session, "messages", [])[-6:]
+            ],
+        )
+    except Exception as exc:
+        session.rollback()
+        logger.exception("RAG pipeline failed for chat session %s", chat_session.id)
+        raise AIServiceUnavailableError() from exc
+
     user_message = ChatMessages(
         session_id=chat_session.id,
         role="user",
         content=payload.content,
     )
     session.add(user_message)
-    session.commit()
-    session.refresh(user_message)
-
-    try:
-        rag_answer, rag_sources = _invoke_rag(
-            session=session, current_user=current_user, query=payload.content
-        )
-    except Exception:
-        logger.exception("RAG pipeline failed for chat session %s", chat_session.id)
-        rag_answer = (
-            "I could not reach the retrieval services right now. "
-            "Please try again in a moment after the AI backend is available."
-        )
-        rag_sources = {"documents": [], "chunks": []}
 
     assistant_message = ChatMessages(
         session_id=chat_session.id,
@@ -210,7 +217,13 @@ def get_chat_session_by_id(
     return chat_session
 
 
-def _invoke_rag(*, session: Session, current_user: User, query: str) -> tuple[str, dict]:
+def _invoke_rag(
+    *,
+    session: Session,
+    current_user: User,
+    query: str,
+    conversation_history: list[dict[str, str]] | None = None,
+) -> tuple[str, dict]:
     if current_user.id is None:
         raise HTTPException(status_code=400, detail="Invalid user context")
 
@@ -218,17 +231,12 @@ def _invoke_rag(*, session: Session, current_user: User, query: str) -> tuple[st
         session=session,
         user_id=current_user.id,
         query=query,
+        conversation_history=conversation_history,
     )
     return rag_result.answer, rag_result.sources
 
 
-async def stream_message_and_get_response(
-    *,
-    session: Session,
-    current_user: User,
-    chat_session_id: int,
-    payload: ChatMessageCreate,
-) -> AsyncGenerator[str, None]:
+async def stream_message_response(*, assistant_message: ChatMessages) -> AsyncGenerator[str, None]:
     """
     Stream chat response with Server-Sent Events (SSE) format.
 
@@ -236,60 +244,6 @@ async def stream_message_and_get_response(
         str: Text chunks in SSE format (e.g., "data: hello world\n\n")
         Final yield: "data: [DONE]\n\n" to signal completion
     """
-    chat_session = get_chat_session_by_id(
-        session=session,
-        current_user=current_user,
-        chat_session_id=chat_session_id,
-    )
-
-    # Create and save user message
-    user_message = ChatMessages(
-        session_id=chat_session.id,
-        role="user",
-        content=payload.content,
-    )
-    session.add(user_message)
-    session.commit()
-    session.refresh(user_message)
-
-    # Get RAG context with retrieval results
-    try:
-        rag_answer, rag_sources = _invoke_rag(
-            session=session, current_user=current_user, query=payload.content
-        )
-    except Exception:
-        logger.exception("RAG pipeline failed for chat session %s", chat_session.id)
-        rag_answer = (
-            "I could not reach the retrieval services right now. "
-            "Please try again in a moment after the AI backend is available."
-        )
-        rag_sources = {"documents": [], "chunks": []}
-
-    # Stream the response in SSE format
-    accumulated_response = rag_answer
-    # Escape newlines for SSE format
-    escaped_response = rag_answer.replace("\n", "\\n")
+    escaped_response = assistant_message.content.replace("\n", "\\n")
     yield f"data: {escaped_response}\n\n"
-
-    # Signal completion
     yield "data: [DONE]\n\n"
-
-    # Save assistant message with full response after streaming completes
-    assistant_message = ChatMessages(
-        session_id=chat_session.id,
-        role="assistant",
-        content=accumulated_response,
-        model_used="rag-v1",
-        sources=rag_sources,
-        tokens_used=len(accumulated_response.split()),
-    )
-    session.add(assistant_message)
-
-    # Update session metadata
-    chat_session.last_message_at = datetime.now()
-    if not chat_session.title:
-        chat_session.title = create_content_preview(payload.content, max_length=80)
-    session.add(chat_session)
-
-    session.commit()
-    logger.info("Streamed response saved to chat session %s", chat_session.id)

@@ -4,6 +4,7 @@ import { useTheme } from "next-themes";
 import { MoonStar, Monitor, ShieldCheck, Sparkles, SunMedium, UserCircle2 } from "lucide-react";
 
 import { useAuth } from "@/lib/hooks/useAuth";
+import { AIModelSettings } from "@/components/features/settings/AIModelSettings";
 import { Badge, Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 
 export default function SettingsPage() {
@@ -88,6 +89,8 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <AIModelSettings />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-border bg-card">

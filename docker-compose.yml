@@ -78,9 +78,9 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       # AI
-      # For local Ollama: Mac/Windows use host.docker.internal, Linux use host network
-      # Or set OLLAMA_BASE_URL=http://ollama:11434 if running ollama in Docker
-      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:1b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
     ports:
       - "3000:3000"
     depends_on:
@@ -100,8 +100,47 @@ services:
       - pka-network
     command: python run.py
 
+  # Optional local AI runtime. Start with: docker compose --profile ai up --build -d
+  ollama:
+    image: ollama/ollama:latest
+    container_name: pka-ollama
+    profiles: ["ai"]
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - pka-network
+
+  ollama-models:
+    image: ollama/ollama:latest
+    container_name: pka-ollama-models
+    profiles: ["ai"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:1b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama pull "$${OLLAMA_CHAT_MODEL}"
+        ollama pull "$${OLLAMA_EMBEDDING_MODEL}"
+    restart: "no"
+    networks:
+      - pka-network
+
 volumes:
   postgres_data:
+  ollama_data:
 
 networks:
   pka-network:

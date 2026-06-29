@@ -42,6 +42,19 @@ export interface User {
 	created_at?: string | null;
 }
 
+export interface OllamaModelOption {
+	name: string;
+	size: number;
+	modified_at?: string | null;
+}
+
+export interface UserAISettings {
+	llm_model: string;
+	embedding_model: string;
+	ollama_available: boolean;
+	available_models: OllamaModelOption[];
+}
+
 export interface FolderCreate {
 	name: string;
 	description?: string | null;
@@ -222,9 +235,17 @@ export interface ChatSourceChunk {
 	preview: string;
 }
 
+export interface ChatSourceNote {
+	note_id: number;
+	title: string;
+	score: number;
+	preview: string;
+}
+
 export interface ChatSources {
 	documents: ChatSourceDocument[];
 	chunks: ChatSourceChunk[];
+	notes: ChatSourceNote[];
 }
 
 export interface ChatMessageResponse {

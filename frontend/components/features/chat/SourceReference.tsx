@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, FolderTree } from "lucide-react";
+import { FileText, FolderTree, NotebookText } from "lucide-react";
 
 import type { ChatSources } from "@/types";
 
@@ -11,8 +11,9 @@ interface SourceReferenceProps {
 export function SourceReference({ sources }: SourceReferenceProps) {
   const documents = sources?.documents ?? [];
   const chunks = sources?.chunks ?? [];
+  const notes = sources?.notes ?? [];
 
-  if (documents.length === 0 && chunks.length === 0) {
+  if (documents.length === 0 && chunks.length === 0 && notes.length === 0) {
     return null;
   }
 
@@ -31,6 +32,18 @@ export function SourceReference({ sources }: SourceReferenceProps) {
               <span>{document.chunk_count} chunks</span>
               <span>score {document.max_score.toFixed(2)}</span>
             </div>
+          </div>
+        ))}
+        {notes.map((note) => (
+          <div key={note.note_id} className="border border-border bg-background px-2 py-1.5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-2">
+                <NotebookText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                <p className="truncate text-xs text-foreground">{note.title}</p>
+              </div>
+              <span className="text-[10px] text-muted-foreground">score {note.score.toFixed(2)}</span>
+            </div>
+            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{note.preview}</p>
           </div>
         ))}
       </div>

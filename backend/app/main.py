@@ -133,22 +133,34 @@ def health_live():
     return {"status": "alive"}
 
 
-async def _check_ollama_connection() -> bool:
+async def _check_ollama_connection() -> tuple[bool, list[str]]:
     ollama_tags_url = f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags"
     try:
         async with httpx.AsyncClient(timeout=3.0) as client:
             response = await client.get(ollama_tags_url)
-            return response.status_code == 200
+            response.raise_for_status()
+            payload = response.json()
+            installed_models = {
+                str(model.get("name", "")).split(":", maxsplit=1)[0]
+                for model in payload.get("models", [])
+                if isinstance(model, dict)
+            }
+            required_models = {
+                settings.OLLAMA_CHAT_MODEL.split(":", maxsplit=1)[0],
+                settings.OLLAMA_EMBEDDING_MODEL.split(":", maxsplit=1)[0],
+            }
+            missing_models = sorted(required_models - installed_models)
+            return not missing_models, missing_models
     except Exception as exc:
         logger.warning("Ollama readiness check failed: %s", exc)
-        return False
+        return False, [settings.OLLAMA_CHAT_MODEL, settings.OLLAMA_EMBEDDING_MODEL]
 
 
 @app.get("/health/ready")
 async def health_ready():
     """Readiness probe: verifies dependencies required to serve traffic."""
     db_ready = await test_db_connection()
-    ollama_ready = await _check_ollama_connection()
+    ollama_ready, missing_models = await _check_ollama_connection()
     require_ollama = settings.ENVIRONMENT == "production"
     ready = db_ready and (ollama_ready or not require_ollama)
 
@@ -158,6 +170,11 @@ async def health_ready():
         "dependencies": {
             "database": "up" if db_ready else "down",
             "ollama": "up" if ollama_ready else "down",
+        },
+        "ai": {
+            "chat_model": settings.OLLAMA_CHAT_MODEL,
+            "embedding_model": settings.OLLAMA_EMBEDDING_MODEL,
+            "missing_models": missing_models,
         },
     }
     if ready:

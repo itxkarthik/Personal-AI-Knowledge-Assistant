@@ -1,14 +1,15 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ChatHistory } from "@/components/features/chat/ChatHistory";
 import { ChatInput } from "@/components/features/chat/ChatInput";
 import { SaveAsNote } from "@/components/features/chat/SaveAsNote";
 import { listFolders } from "@/lib/api/notes";
+import { getAIReadiness } from "@/lib/api/health";
 import { useChat } from "@/lib/hooks/useChat";
 import type { NoteFolder } from "@/types";
 
@@ -16,6 +17,16 @@ export default function ChatSessionPage() {
   const params = useParams<{ sessionID: string }>();
   const [folders, setFolders] = useState<NoteFolder[]>([]);
   const [savedStatus, setSavedStatus] = useState<string | null>(null);
+  const [aiStatus, setAIStatus] = useState<"checking" | "ready" | "unavailable">("checking");
+
+  const checkAIReadiness = useCallback(async () => {
+    try {
+      const readiness = await getAIReadiness();
+      setAIStatus(readiness.dependencies.ollama === "up" ? "ready" : "unavailable");
+    } catch {
+      setAIStatus("unavailable");
+    }
+  }, []);
 
   const rawSessionId = Array.isArray(params.sessionID) ? params.sessionID[0] : params.sessionID;
   const sessionId = Number(rawSessionId);
@@ -49,6 +60,20 @@ export default function ChatSessionPage() {
   useEffect(() => {
     void listFolders().then((response) => setFolders(response)).catch(() => setFolders([]));
   }, []);
+
+  useEffect(() => {
+    const initialCheckId = window.setTimeout(() => {
+      void checkAIReadiness();
+    }, 0);
+    const intervalId = window.setInterval(() => {
+      void checkAIReadiness();
+    }, 15000);
+
+    return () => {
+      window.clearTimeout(initialCheckId);
+      window.clearInterval(intervalId);
+    };
+  }, [checkAIReadiness]);
 
   useEffect(() => {
     return () => {
@@ -85,12 +110,36 @@ export default function ChatSessionPage() {
 
       {error ? <p className="rounded-sm border border-[#ff3b30] bg-[#ff3b30]/10 p-3 text-sm text-[#a50011]">{error}</p> : null}
 
+      {aiStatus !== "ready" ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 border border-border bg-muted px-3 py-2 text-sm text-muted-foreground">
+          <span className="inline-flex items-center gap-2">
+            {aiStatus === "checking" ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {aiStatus === "checking"
+              ? "Checking local AI..."
+              : "Local AI is unavailable. Start the Ollama profile, then retry."}
+          </span>
+          {aiStatus === "unavailable" ? (
+            <button
+              type="button"
+              onClick={() => {
+                setAIStatus("checking");
+                void checkAIReadiness();
+              }}
+              className="inline-flex items-center gap-2 border border-border bg-background px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       {savedStatus ? <p className="rounded-sm border border-border bg-muted p-3 text-sm text-foreground">{savedStatus}</p> : null}
 
       <ChatHistory messages={activeSession ? renderedMessages : []} isLoading={isLoading} streamingMessageId={streamingMessageId} />
 
       <ChatInput
-        disabled={isSendingMessage || !activeSession}
+        disabled={isSendingMessage || !activeSession || aiStatus !== "ready"}
         onSend={async (content) => {
           setSavedStatus(null);
           await sendMessage(sessionId, content);

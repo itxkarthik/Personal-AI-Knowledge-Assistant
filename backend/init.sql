@@ -271,9 +271,9 @@ CREATE TABLE IF NOT EXISTS user_settings (
     user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
 
     -- LLM Settings
-    llm_provider VARCHAR(50) DEFAULT 'openai' CHECK (llm_provider IN ('openai', 'ollama')),
-    llm_model VARCHAR(100) DEFAULT 'gpt-3.5-turbo',
-    embedding_model VARCHAR(100) DEFAULT 'text-embedding-ada-002',
+    llm_provider VARCHAR(50) DEFAULT 'ollama' CHECK (llm_provider IN ('openai', 'ollama')),
+    llm_model VARCHAR(100) DEFAULT 'llama3.2:1b',
+    embedding_model VARCHAR(100) DEFAULT 'nomic-embed-text',
 
     -- RAG Settings
     chunk_size INTEGER DEFAULT 1000 CHECK (chunk_size >= 100 AND chunk_size <= 4000),

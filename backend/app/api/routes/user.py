@@ -1,23 +1,27 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import func, select
-
+import httpx
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.models.user import (
+    LlmProvider,
     Message,
     UpdatePassword,
     User,
     UserCreate,
     UserPublic,
     UserRegister,
+    UserSettings,
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
 )
 from app.schemas.error import StandardErrorResponse
+from app.schemas.settings import OllamaModelOption, UserAISettingsResponse, UserAISettingsUpdate
+from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import func, select
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -144,6 +148,101 @@ def read_user_me(current_user: CurrentUser) -> Any:
     Get current user.
     """
     return current_user
+
+
+def _model_base(name: str) -> str:
+    return name.split(":", maxsplit=1)[0].strip().casefold()
+
+
+def _parse_chat_models(payload: dict[str, Any], embedding_model: str) -> list[OllamaModelOption]:
+    embedding_base = _model_base(embedding_model)
+    models: list[OllamaModelOption] = []
+    for item in payload.get("models", []):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        if not name or _model_base(name) == embedding_base:
+            continue
+        models.append(
+            OllamaModelOption(
+                name=name,
+                size=int(item.get("size") or 0),
+                modified_at=item.get("modified_at"),
+            )
+        )
+    return sorted(models, key=lambda model: model.name.casefold())
+
+
+async def _fetch_chat_models(embedding_model: str) -> tuple[bool, list[OllamaModelOption]]:
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            response = await client.get(f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags")
+            response.raise_for_status()
+            return True, _parse_chat_models(response.json(), embedding_model)
+    except (httpx.HTTPError, ValueError, TypeError):
+        return False, []
+
+
+def _resolve_user_ai_settings(session: SessionDep, user_id: int) -> UserSettings:
+    preferences = session.get(UserSettings, user_id)
+    if preferences is not None:
+        return preferences
+    return UserSettings(user_id=user_id)
+
+
+@router.get(
+    path="/me/ai-settings",
+    response_model=UserAISettingsResponse,
+    responses={401: {"model": StandardErrorResponse, "description": "Authentication required"}},
+)
+async def read_user_ai_settings(
+    session: SessionDep, current_user: CurrentUser
+) -> UserAISettingsResponse:
+    preferences = _resolve_user_ai_settings(session, current_user.id)
+    ollama_available, models = await _fetch_chat_models(preferences.embedding_model)
+    return UserAISettingsResponse(
+        llm_model=preferences.llm_model,
+        embedding_model=preferences.embedding_model,
+        ollama_available=ollama_available,
+        available_models=models,
+    )
+
+
+@router.patch(
+    path="/me/ai-settings",
+    response_model=UserAISettingsResponse,
+    responses={
+        400: {"model": StandardErrorResponse, "description": "Model is not installed"},
+        401: {"model": StandardErrorResponse, "description": "Authentication required"},
+        503: {"model": StandardErrorResponse, "description": "Ollama unavailable"},
+    },
+)
+async def update_user_ai_settings(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: UserAISettingsUpdate,
+) -> UserAISettingsResponse:
+    preferences = _resolve_user_ai_settings(session, current_user.id)
+    ollama_available, models = await _fetch_chat_models(preferences.embedding_model)
+    installed_names = {model.name for model in models}
+    if not ollama_available:
+        raise HTTPException(status_code=503, detail="Ollama is unavailable")
+    if body.llm_model not in installed_names:
+        raise HTTPException(status_code=400, detail="Selected model is not installed")
+
+    preferences.llm_provider = LlmProvider.ollama
+    preferences.llm_model = body.llm_model
+    session.add(preferences)
+    session.commit()
+    session.refresh(preferences)
+
+    return UserAISettingsResponse(
+        llm_model=preferences.llm_model,
+        embedding_model=preferences.embedding_model,
+        ollama_available=True,
+        available_models=models,
+    )
 
 
 @router.delete(

@@ -1,10 +1,9 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
-
 from app.utils.sanitization import sanitize_plain_text
 from app.utils.validators import validate_no_sql_injection, validate_no_xss
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class ChatCreate(BaseModel):
@@ -49,9 +48,17 @@ class ChatSourceChunk(BaseModel):
     preview: str
 
 
+class ChatSourceNote(BaseModel):
+    note_id: int
+    title: str
+    score: float
+    preview: str
+
+
 class ChatSources(BaseModel):
     documents: list[ChatSourceDocument] = Field(default_factory=list)
     chunks: list[ChatSourceChunk] = Field(default_factory=list)
+    notes: list[ChatSourceNote] = Field(default_factory=list)
 
 
 class ChatMessageResponse(BaseModel):

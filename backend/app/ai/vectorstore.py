@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.models.document import Document, DocumentChunks
 from sqlalchemy import text
-from sqlmodel import Session
-
-from app.models.document import DocumentChunks
+from sqlmodel import Session, select
 
 
 @dataclass(slots=True)
@@ -14,6 +13,14 @@ class VectorSearchResult:
     chunk_id: int
     document_id: int
     chunk_index: int
+    content: str
+    score: float
+
+
+@dataclass(slots=True)
+class NoteVectorSearchResult:
+    note_id: int
+    title: str
     content: str
     score: float
 
@@ -50,6 +57,22 @@ class PgVectorStore:
 
         self.session.exec(
             text(
+                f"""
+				CREATE TABLE IF NOT EXISTS note_embeddings (
+					note_id INTEGER PRIMARY KEY REFERENCES notes(id) ON DELETE CASCADE,
+					user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+					model VARCHAR(100) NOT NULL,
+					content_hash VARCHAR(64) NOT NULL,
+					embedding vector({embedding_dimensions}) NOT NULL,
+					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				)
+				"""
+            )
+        )
+
+        self.session.exec(
+            text(
                 """
 				CREATE INDEX IF NOT EXISTS ix_chunk_embeddings_user_document
 				ON chunk_embeddings (user_id, document_id)
@@ -65,6 +88,109 @@ class PgVectorStore:
 				WITH (lists = 100)
 				"""
             )
+        )
+
+        self.session.exec(
+            text(
+                """
+				CREATE INDEX IF NOT EXISTS ix_note_embeddings_user
+				ON note_embeddings (user_id, note_id)
+				"""
+            )
+        )
+
+        self.session.exec(
+            text(
+                """
+				CREATE INDEX IF NOT EXISTS ix_note_embeddings_embedding_cosine
+				ON note_embeddings USING ivfflat (embedding vector_cosine_ops)
+				WITH (lists = 100)
+				"""
+            )
+        )
+
+    def indexed_document_chunk_ids(self, *, user_id: int, model: str) -> set[int]:
+        rows = self.session.exec(
+            text(
+                """
+				SELECT chunk_id
+				FROM chunk_embeddings
+				WHERE user_id = :user_id AND model = :model
+				"""
+            ),
+            params={"user_id": user_id, "model": model},
+        ).all()
+        return {int(row.chunk_id) for row in rows}
+
+    def active_document_chunks(self, *, user_id: int) -> list[DocumentChunks]:
+        return self.session.exec(
+            select(DocumentChunks)
+            .join(Document, Document.id == DocumentChunks.document_id)
+            .where(Document.user_id == user_id, Document.is_deleted.is_(False))
+        ).all()
+
+    def note_embedding_hashes(self, *, user_id: int, model: str) -> dict[int, str]:
+        rows = self.session.exec(
+            text(
+                """
+				SELECT note_id, content_hash
+				FROM note_embeddings
+				WHERE user_id = :user_id AND model = :model
+				"""
+            ),
+            params={"user_id": user_id, "model": model},
+        ).all()
+        return {int(row.note_id): str(row.content_hash) for row in rows}
+
+    def store_note_embeddings(
+        self,
+        *,
+        notes: Sequence[tuple[int, str]],
+        embeddings: Sequence[Sequence[float]],
+        user_id: int,
+        model: str,
+    ) -> None:
+        if len(notes) != len(embeddings):
+            raise ValueError("Note count does not match embedding count")
+        if not notes:
+            return
+
+        dimensions = len(embeddings[0])
+        if dimensions <= 0:
+            raise ValueError("Embedding vectors cannot be empty")
+        self.ensure_schema(embedding_dimensions=dimensions)
+
+        values_clauses: list[str] = []
+        params: dict[str, object] = {}
+        for index, ((note_id, content_hash), embedding) in enumerate(zip(notes, embeddings)):
+            if len(embedding) != dimensions:
+                raise ValueError("All embedding vectors must use the same dimensions")
+            prefix = f"n{index}"
+            values_clauses.append(
+                f"(:{prefix}_note_id, :{prefix}_user_id, :{prefix}_model, "
+                f":{prefix}_content_hash, CAST(:{prefix}_embedding AS vector))"
+            )
+            params[f"{prefix}_note_id"] = note_id
+            params[f"{prefix}_user_id"] = user_id
+            params[f"{prefix}_model"] = model
+            params[f"{prefix}_content_hash"] = content_hash
+            params[f"{prefix}_embedding"] = self._to_vector_literal(embedding)
+
+        self.session.exec(
+            text(
+                f"""
+				INSERT INTO note_embeddings (note_id, user_id, model, content_hash, embedding)
+				VALUES {", ".join(values_clauses)}
+				ON CONFLICT (note_id)
+				DO UPDATE SET
+					user_id = EXCLUDED.user_id,
+					model = EXCLUDED.model,
+					content_hash = EXCLUDED.content_hash,
+					embedding = EXCLUDED.embedding,
+					updated_at = NOW()
+				"""
+            ),
+            params=params,
         )
 
     def upsert_chunk_embedding(
@@ -213,7 +339,8 @@ class PgVectorStore:
 				(1 - (ce.embedding <=> CAST(:embedding AS vector))) AS score
 			FROM chunk_embeddings ce
 			INNER JOIN document_chunks dc ON dc.id = ce.chunk_id
-			WHERE {" AND ".join(where_clauses)}
+			INNER JOIN documents d ON d.id = ce.document_id
+			WHERE {" AND ".join(where_clauses)} AND d.is_deleted = FALSE
 			ORDER BY ce.embedding <=> CAST(:embedding AS vector)
 			LIMIT :top_k
 			"""
@@ -225,6 +352,57 @@ class PgVectorStore:
                 chunk_id=row.chunk_id,
                 document_id=row.document_id,
                 chunk_index=row.chunk_index,
+                content=row.content,
+                score=float(row.score),
+            )
+            for row in rows
+        ]
+
+    def note_similarity_search(
+        self,
+        *,
+        user_id: int,
+        query_embedding: Sequence[float],
+        top_k: int = 5,
+        similarity_threshold: float | None = None,
+    ) -> list[NoteVectorSearchResult]:
+        if not query_embedding:
+            return []
+
+        embedding_literal = self._to_vector_literal(query_embedding)
+        where_clauses = ["ne.user_id = :user_id", "n.is_deleted = FALSE"]
+        params: dict[str, object] = {
+            "user_id": user_id,
+            "embedding": embedding_literal,
+            "top_k": max(1, top_k),
+        }
+        if similarity_threshold is not None:
+            where_clauses.append(
+                "(1 - (ne.embedding <=> CAST(:embedding AS vector))) >= :similarity_threshold"
+            )
+            params["similarity_threshold"] = similarity_threshold
+
+        rows = self.session.exec(
+            text(
+                f"""
+				SELECT
+					n.id AS note_id,
+					n.title AS title,
+					n.content AS content,
+					(1 - (ne.embedding <=> CAST(:embedding AS vector))) AS score
+				FROM note_embeddings ne
+				INNER JOIN notes n ON n.id = ne.note_id
+				WHERE {" AND ".join(where_clauses)}
+				ORDER BY ne.embedding <=> CAST(:embedding AS vector)
+				LIMIT :top_k
+				"""
+            ),
+            params=params,
+        ).all()
+        return [
+            NoteVectorSearchResult(
+                note_id=row.note_id,
+                title=row.title,
                 content=row.content,
                 score=float(row.score),
             )

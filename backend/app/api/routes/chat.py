@@ -4,7 +4,7 @@ from typing import Any
 
 from app.api.deps import CurrentUser, SessionDep
 from app.core.websocket import manager
-from app.models.chat import ChatMessages, ChatSession
+from app.models.chat import ChatMessages, ChatRole, ChatSession
 from app.schemas.chat import ChatCreate, ChatMessageCreate, ChatMessageResponse, ChatResponse
 from app.schemas.error import StandardErrorResponse
 from app.schemas.note import NoteResponse
@@ -14,7 +14,7 @@ from app.services.chat_service import (
     get_chat_session_by_id,
     list_chat_sessions,
     send_message_and_get_response,
-    stream_message_and_get_response,
+    stream_message_response,
 )
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
@@ -41,7 +41,7 @@ def _to_chat_message_response(message: ChatMessages) -> ChatMessageResponse:
     return ChatMessageResponse(
         id=message.id,
         session_id=message.session_id,
-        role=str(message.role),
+        role=message.role.value if isinstance(message.role, ChatRole) else str(message.role),
         content=message.content,
         model_used=message.model_used,
         tokens_used=message.tokens_used,
@@ -218,13 +218,14 @@ async def stream_message_endpoint(
     2. Parse SSE events
     3. Stop when receiving `[DONE]` marker
     """
+    _, assistant_message = send_message_and_get_response(
+        session=session,
+        current_user=current_user,
+        chat_session_id=session_id,
+        payload=body,
+    )
     return StreamingResponse(
-        stream_message_and_get_response(
-            session=session,
-            current_user=current_user,
-            chat_session_id=session_id,
-            payload=body,
-        ),
+        stream_message_response(assistant_message=assistant_message),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

@@ -2,11 +2,10 @@ from datetime import UTC, datetime
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
+from app.utils.sanitization import sanitize_plain_text
 from pydantic import field_validator
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import CheckConstraint, Column, Field, Index, Relationship, SQLModel, desc
-
-from app.utils.sanitization import sanitize_plain_text
 
 from .chat import TimestampMixin
 
@@ -167,7 +166,7 @@ class UserSettings(TimestampMixin, SQLModel, table=True):
     )
     user_id: int | None = Field(primary_key=True, foreign_key="users.id")
     llm_provider: LlmProvider = Field(default=LlmProvider.ollama)
-    llm_model: str = Field(default="tinyllama", max_length=100)
+    llm_model: str = Field(default="llama3.2:1b", max_length=100)
     embedding_model: str = Field(default="nomic-embed-text", max_length=100)
     chunk_size: int = Field(default=1000)
     chunk_overlap: int = Field(default=200)

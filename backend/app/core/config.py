@@ -191,6 +191,8 @@ class Settings(BaseSettings):
     # AI
     # Ollama base URL - configurable via environment variable
     OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_CHAT_MODEL: str = "llama3.2:1b"
+    OLLAMA_EMBEDDING_MODEL: str = "nomic-embed-text"
 
     # Redis for distributed rate limiting (required in multi-worker deployments)
     # Set via REDIS_URL environment variable, e.g., redis://localhost:6379/0

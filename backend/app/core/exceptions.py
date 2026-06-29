@@ -107,6 +107,20 @@ class ExternalServiceError(AppError):
         )
 
 
+class AIServiceUnavailableError(AppError):
+    """Raised when the configured local AI runtime cannot serve a request."""
+
+    def __init__(
+        self,
+        message: str = "AI is unavailable. Start the Ollama profile and try again.",
+    ):
+        super().__init__(
+            message=message,
+            error_code=ErrorCode.AI_SERVICE_UNAVAILABLE,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """
     Global exception handler for FastAPI.

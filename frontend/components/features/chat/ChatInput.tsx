@@ -15,8 +15,12 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
     const trimmed = content.trim();
     if (!trimmed || disabled) return;
 
-    await onSend(trimmed);
-    setContent("");
+    try {
+      await onSend(trimmed);
+      setContent("");
+    } catch {
+      // The page displays the request error. Keep the draft available for retry.
+    }
   };
 
   return (
