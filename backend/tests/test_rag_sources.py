@@ -1,7 +1,15 @@
 from unittest import TestCase
 
 from app.ai.llm import build_chat_messages
-from app.ai.rag import _build_context_chunks, _build_sources_payload, _repair_exact_terms
+from app.ai.rag import (
+    WorkspaceInventoryEntry,
+    _build_context_chunks,
+    _build_sources_payload,
+    _format_workspace_inventory,
+    _merge_inventory_sources,
+    _needs_workspace_inventory,
+    _repair_exact_terms,
+)
 from app.ai.vectorstore import NoteVectorSearchResult
 
 
@@ -57,3 +65,28 @@ class RAGNoteSourceTests(TestCase):
         repaired = _repair_exact_terms(answer, context)
 
         self.assertEqual(repaired, 'Use "SILVER LANTERN" after approval from Nila Rao.')
+
+    def test_project_overview_question_requests_workspace_inventory(self) -> None:
+        self.assertTrue(_needs_workspace_inventory("What are all the projects I have?"))
+        self.assertTrue(_needs_workspace_inventory("Tell me about my projects\nWhat are they?"))
+        self.assertFalse(_needs_workspace_inventory("When is the Atlas launch?"))
+
+    def test_inventory_context_and_sources_include_every_entry(self) -> None:
+        entries = [
+            WorkspaceInventoryEntry("document", 1, "Atlas", "A launch planning project."),
+            WorkspaceInventoryEntry("document", 2, "Beacon", "A reporting project."),
+            WorkspaceInventoryEntry("note", 3, "Cedar", "A research project."),
+        ]
+
+        context = _format_workspace_inventory(entries)
+        sources = {"documents": [], "chunks": [], "notes": []}
+        _merge_inventory_sources(sources=sources, inventory_entries=entries)
+
+        self.assertIn("Atlas", context)
+        self.assertIn("Beacon", context)
+        self.assertIn("Cedar", context)
+        self.assertEqual(
+            [document["title"] for document in sources["documents"]],
+            ["Atlas", "Beacon"],
+        )
+        self.assertEqual(sources["notes"][0]["title"], "Cedar")

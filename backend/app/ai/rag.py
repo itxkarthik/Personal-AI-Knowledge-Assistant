@@ -43,6 +43,14 @@ class RAGResult:
     sources: dict[str, Any]
 
 
+@dataclass(slots=True)
+class WorkspaceInventoryEntry:
+    source_type: str
+    source_id: int
+    title: str
+    description: str
+
+
 def run_rag_pipeline(
     *,
     session: Session,
@@ -74,6 +82,11 @@ def run_rag_pipeline(
     user_settings = session.get(UserSettings, user_id)
     top_k = user_settings.top_k_results if user_settings else 5
     similarity_threshold = user_settings.similarity_threshold if user_settings else 0.7
+    needs_inventory = _needs_workspace_inventory(retrieval_query)
+    retrieval_limit = max(top_k, 12 if needs_inventory else 6)
+    effective_threshold = (
+        min(similarity_threshold, 0.4) if needs_inventory else similarity_threshold
+    )
 
     vector_store = PgVectorStore(session=session)
     vector_store.ensure_schema(embedding_dimensions=len(query_embedding))
@@ -87,28 +100,28 @@ def run_rag_pipeline(
     chunk_hits = vector_store.similarity_search(
         user_id=user_id,
         query_embedding=query_embedding,
-        top_k=top_k,
-        similarity_threshold=similarity_threshold,
+        top_k=retrieval_limit,
+        similarity_threshold=effective_threshold,
     )
     note_hits = vector_store.note_similarity_search(
         user_id=user_id,
         query_embedding=query_embedding,
-        top_k=top_k,
-        similarity_threshold=similarity_threshold,
+        top_k=retrieval_limit,
+        similarity_threshold=effective_threshold,
     )
 
-    adaptive_threshold = 0.45
-    if not chunk_hits and not note_hits and similarity_threshold > adaptive_threshold:
+    adaptive_threshold = 0.4
+    if not chunk_hits and not note_hits and effective_threshold > adaptive_threshold:
         chunk_hits = vector_store.similarity_search(
             user_id=user_id,
             query_embedding=query_embedding,
-            top_k=top_k,
+            top_k=retrieval_limit,
             similarity_threshold=adaptive_threshold,
         )
         note_hits = vector_store.note_similarity_search(
             user_id=user_id,
             query_embedding=query_embedding,
-            top_k=top_k,
+            top_k=retrieval_limit,
             similarity_threshold=adaptive_threshold,
         )
 
@@ -119,12 +132,18 @@ def run_rag_pipeline(
         reverse=True,
     )
     if ranked_hits:
-        relevance_floor = max(adaptive_threshold, ranked_hits[0][0] - 0.08)
-        ranked_hits = [item for item in ranked_hits if item[0] >= relevance_floor][: min(top_k, 3)]
+        score_window = 0.18 if needs_inventory else 0.12
+        result_limit = min(retrieval_limit, 10 if needs_inventory else 6)
+        relevance_floor = max(adaptive_threshold, ranked_hits[0][0] - score_window)
+        ranked_hits = [item for item in ranked_hits if item[0] >= relevance_floor][:result_limit]
     chunk_hits = [hit for _, source_type, hit in ranked_hits if source_type == "document"]
     note_hits = [hit for _, source_type, hit in ranked_hits if source_type == "note"]
 
-    if not chunk_hits and not note_hits:
+    inventory_entries = (
+        _load_workspace_inventory(session=session, user_id=user_id) if needs_inventory else []
+    )
+
+    if not chunk_hits and not note_hits and not inventory_entries:
         return RAGResult(
             answer="I couldn't find relevant context in your documents or notes yet.",
             sources={"documents": [], "chunks": [], "notes": []},
@@ -138,13 +157,16 @@ def run_rag_pipeline(
         note_hits=note_hits,
         document_map=document_map,
     )
+    if inventory_entries:
+        context_chunks.insert(0, _format_workspace_inventory(inventory_entries))
 
     system_prompt = (
-        "You are a personal knowledge assistant. Answer using only the provided document "
-        "and note context. Respond with only the direct answer in one to three sentences. "
-        "Preserve exact names, codes, dates, and phrases. Do not repeat or summarize all context. "
-        "Do not invent alternatives or add details that are not explicitly supported. "
-        "If context is insufficient, say what information is missing."
+        "You are a personal knowledge assistant. Answer using only the provided document and note "
+        "context. Synthesize information across every relevant source instead of relying on exact "
+        "word overlap with the question. For list, overview, comparison, or count questions, include "
+        "all distinct supported items and use concise bullets when helpful. Preserve exact names, "
+        "codes, dates, and phrases. Do not invent details or repeat the raw context. If context is "
+        "insufficient, say what information is missing."
     )
 
     messages = build_chat_messages(
@@ -159,7 +181,7 @@ def run_rag_pipeline(
         llm_service.generate_response(
             messages=messages,
             temperature=0.1,
-            max_tokens=160,
+            max_tokens=500 if needs_inventory else 300,
         )
     )
     answer = _repair_exact_terms(answer.strip(), context_chunks)
@@ -169,7 +191,137 @@ def run_rag_pipeline(
         note_hits=note_hits,
         document_map=document_map,
     )
+    _merge_inventory_sources(sources=sources, inventory_entries=inventory_entries)
     return RAGResult(answer=answer, sources=sources)
+
+
+_INVENTORY_SUBJECTS = (
+    "project",
+    "document",
+    "note",
+    "initiative",
+    "plan",
+    "topic",
+    "item",
+    "file",
+)
+
+
+def _needs_workspace_inventory(query: str) -> bool:
+    normalized = " ".join(query.casefold().split())
+    has_subject = any(
+        re.search(rf"\b{re.escape(subject)}s?\b", normalized) for subject in _INVENTORY_SUBJECTS
+    )
+    if not has_subject:
+        return False
+
+    overview_phrases = (
+        "what are",
+        "which are",
+        "what do i have",
+        "list",
+        "show me",
+        "name",
+        "overview",
+        "summarize",
+        "summarise",
+        "compare",
+        "how many",
+        "all my",
+        "all the",
+        "each",
+        "every",
+    )
+    return any(phrase in normalized for phrase in overview_phrases)
+
+
+def _load_workspace_inventory(*, session: Session, user_id: int) -> list[WorkspaceInventoryEntry]:
+    documents = session.exec(
+        select(Document)
+        .where(
+            Document.user_id == user_id,
+            Document.is_deleted.is_(False),
+            Document.status == "completed",
+        )
+        .order_by(Document.updated_at.desc())
+        .limit(40)
+    ).all()
+    notes = session.exec(
+        select(Notes)
+        .where(Notes.user_id == user_id, Notes.is_deleted.is_not(True))
+        .order_by(Notes.updated_at.desc())
+        .limit(40)
+    ).all()
+
+    entries: list[WorkspaceInventoryEntry] = []
+    for document in documents:
+        if document.id is None:
+            continue
+        description = document.summary or document.content_preview or "No summary available."
+        entries.append(
+            WorkspaceInventoryEntry(
+                source_type="document",
+                source_id=document.id,
+                title=document.title,
+                description=create_content_preview(description, max_length=700),
+            )
+        )
+    for note in notes:
+        if note.id is None:
+            continue
+        description = note.summary or note.content_preview or note.content
+        entries.append(
+            WorkspaceInventoryEntry(
+                source_type="note",
+                source_id=note.id,
+                title=note.title,
+                description=create_content_preview(description, max_length=700),
+            )
+        )
+    return entries
+
+
+def _format_workspace_inventory(
+    entries: Sequence[WorkspaceInventoryEntry], *, max_chars: int = 18000
+) -> str:
+    lines = ["[Workspace inventory: use every relevant entry for overview questions]"]
+    for entry in entries:
+        label = "Document" if entry.source_type == "document" else "Note"
+        line = f"- {label} #{entry.source_id}: {entry.title} - {entry.description}"
+        if len("\n".join([*lines, line])) > max_chars:
+            lines.append(
+                "- Additional workspace entries were omitted because the context limit was reached."
+            )
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _merge_inventory_sources(
+    *, sources: dict[str, Any], inventory_entries: Sequence[WorkspaceInventoryEntry]
+) -> None:
+    existing_document_ids = {item["document_id"] for item in sources["documents"]}
+    existing_note_ids = {item["note_id"] for item in sources["notes"]}
+
+    for entry in inventory_entries:
+        if entry.source_type == "document" and entry.source_id not in existing_document_ids:
+            sources["documents"].append(
+                {
+                    "document_id": entry.source_id,
+                    "title": entry.title,
+                    "chunk_count": 0,
+                    "max_score": 0.0,
+                }
+            )
+        elif entry.source_type == "note" and entry.source_id not in existing_note_ids:
+            sources["notes"].append(
+                {
+                    "note_id": entry.source_id,
+                    "title": entry.title,
+                    "score": 0.0,
+                    "preview": create_content_preview(entry.description, max_length=200),
+                }
+            )
 
 
 def _repair_exact_terms(answer: str, context_chunks: Sequence[str]) -> str:

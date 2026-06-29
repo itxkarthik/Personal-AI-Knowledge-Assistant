@@ -29,8 +29,14 @@ export function SourceReference({ sources }: SourceReferenceProps) {
               <p className="truncate text-xs text-foreground">{document.title}</p>
             </div>
             <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <span>{document.chunk_count} chunks</span>
-              <span>score {document.max_score.toFixed(2)}</span>
+              {document.max_score > 0 ? (
+                <>
+                  <span>{document.chunk_count} chunks</span>
+                  <span>score {document.max_score.toFixed(2)}</span>
+                </>
+              ) : (
+                <span>workspace overview</span>
+              )}
             </div>
           </div>
         ))}
@@ -41,7 +47,7 @@ export function SourceReference({ sources }: SourceReferenceProps) {
                 <NotebookText className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
                 <p className="truncate text-xs text-foreground">{note.title}</p>
               </div>
-              <span className="text-[10px] text-muted-foreground">score {note.score.toFixed(2)}</span>
+              <span className="text-[10px] text-muted-foreground">{note.score > 0 ? `score ${note.score.toFixed(2)}` : "workspace overview"}</span>
             </div>
             <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">{note.preview}</p>
           </div>

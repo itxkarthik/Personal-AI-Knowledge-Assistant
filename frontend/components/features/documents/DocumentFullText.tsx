@@ -12,8 +12,8 @@ interface DocumentFullTextProps {
 
 export function DocumentFullText({ document }: DocumentFullTextProps) {
   return (
-    <div className="space-y-6">
-      <section className="border border-border bg-background p-6">
+    <div className="flex h-[calc(100dvh-11rem)] min-h-[32rem] flex-col gap-4">
+      <section className="flex-none border border-border bg-background p-5">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="inline-flex items-center gap-2 text-xs text-muted-foreground">
@@ -28,10 +28,13 @@ export function DocumentFullText({ document }: DocumentFullTextProps) {
         </div>
       </section>
 
-      <section className="border border-border bg-background p-6">
-        <h2 className="text-lg font-bold text-foreground">Document Content</h2>
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden border border-border bg-background p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-foreground">Document Content</h2>
+          <p className="text-xs text-muted-foreground">{document.content.length.toLocaleString()} characters</p>
+        </div>
         {document.content ? (
-          <pre className="mt-4 max-h-[70vh] overflow-auto whitespace-pre-wrap border border-border bg-muted p-4 text-sm leading-6 text-foreground">
+          <pre className="mt-4 min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words border border-border bg-muted p-4 font-mono text-sm leading-6 text-foreground">
             {document.content}
           </pre>
         ) : (

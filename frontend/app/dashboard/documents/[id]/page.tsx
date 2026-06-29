@@ -3,15 +3,18 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { DocumentViewer } from "@/components/features/documents";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { regenerateDocumentSummary } from "@/lib/api/documents";
 import { useDocumentStore } from "@/store/documentStore";
 
 export default function DocumentDetailsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const selectedDocument = useDocumentStore((state) => state.selectedDocument);
   const isLoading = useDocumentStore((state) => state.isLoading);
@@ -50,14 +53,30 @@ export default function DocumentDetailsPage() {
       ) : error ? (
         <p className="rounded-sm border border-[#ff3b30] bg-[#ff3b30]/10 p-4 text-sm text-[#a50011]">{error}</p>
       ) : selectedDocument ? (
-        <DocumentViewer
-          document={selectedDocument}
-          isDeleting={isDeleting}
-          onDelete={async (id) => {
-            await deleteDocumentById(id);
-            router.replace("/dashboard/documents");
-          }}
-        />
+        <>
+          {summaryError ? <p className="rounded-sm border border-[#ff3b30] bg-[#ff3b30]/10 p-4 text-sm text-[#a50011]">{summaryError}</p> : null}
+          <DocumentViewer
+            document={selectedDocument}
+            isDeleting={isDeleting}
+            isGeneratingSummary={isGeneratingSummary}
+            onGenerateSummary={async (id) => {
+              setIsGeneratingSummary(true);
+              setSummaryError(null);
+              try {
+                await regenerateDocumentSummary(id);
+                await fetchDocumentById(id);
+              } catch (summaryGenerationError) {
+                setSummaryError(summaryGenerationError instanceof Error ? summaryGenerationError.message : "Failed to generate the document summary.");
+              } finally {
+                setIsGeneratingSummary(false);
+              }
+            }}
+            onDelete={async (id) => {
+              await deleteDocumentById(id);
+              router.replace("/dashboard/documents");
+            }}
+          />
+        </>
       ) : (
         <p className="border border-border bg-muted p-4 text-sm text-muted-foreground">Document not found.</p>
       )}

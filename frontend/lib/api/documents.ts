@@ -58,10 +58,19 @@ export async function uploadDocument(
 	formData.append("language", payload.language?.trim() || "en");
 
 	const response = await apiClient.post<DocumentResponse>(
-		"/documents/upload/",
+		"/documents/upload",
 		formData
 	);
 
+	return response.data;
+}
+
+export async function regenerateDocumentSummary(
+	id: number
+): Promise<DocumentResponse> {
+	const response = await apiClient.post<DocumentResponse>(
+		`/documents/${id}/summary`
+	);
 	return response.data;
 }
 

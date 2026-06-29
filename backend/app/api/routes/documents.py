@@ -1,7 +1,5 @@
 from typing import Any
 
-from fastapi import APIRouter, File, Form, Query, UploadFile
-
 from app.api.deps import CurrentUser, SessionDep
 from app.models.user import Message
 from app.schemas.document import (
@@ -14,10 +12,12 @@ from app.schemas.error import StandardErrorResponse
 from app.services.document_service import (
     get_document_by_id,
     list_documents,
+    regenerate_document_summary,
     soft_delete_document,
     update_document_metadata,
     upload_and_process_document,
 )
+from fastapi import APIRouter, File, Form, Query, UploadFile
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -130,6 +130,26 @@ def read_document_content(
         status=document.status,
         content=document.content or "",
         updated_at=document.updated_at,
+    )
+
+
+@router.post(
+    path="/{document_id}/summary",
+    response_model=DocumentResponse,
+    responses={
+        401: {"model": StandardErrorResponse, "description": "Authentication required"},
+        404: {"model": StandardErrorResponse, "description": "Document not found"},
+        409: {"model": StandardErrorResponse, "description": "Document content unavailable"},
+        503: {"model": StandardErrorResponse, "description": "Local AI unavailable"},
+    },
+)
+async def regenerate_document_summary_endpoint(
+    *, session: SessionDep, current_user: CurrentUser, document_id: int
+) -> Any:
+    return await regenerate_document_summary(
+        session=session,
+        current_user=current_user,
+        document_id=document_id,
     )
 
 

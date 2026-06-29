@@ -1,6 +1,6 @@
 "use client";
 
-import { Clock3, ExternalLink, FileText, Languages, Trash2 } from "lucide-react";
+import { Clock3, ExternalLink, FileText, Languages, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils/cn";
@@ -11,10 +11,18 @@ import { formatBytes, formatDate, formatFileType, getStatusClasses } from "./uti
 interface DocumentViewerProps {
   document: DocumentResponse;
   onDelete?: (id: number) => Promise<void> | void;
+  onGenerateSummary?: (id: number) => Promise<void> | void;
   isDeleting?: boolean;
+  isGeneratingSummary?: boolean;
 }
 
-export function DocumentViewer({ document, onDelete, isDeleting = false }: DocumentViewerProps) {
+export function DocumentViewer({
+  document,
+  onDelete,
+  onGenerateSummary,
+  isDeleting = false,
+  isGeneratingSummary = false,
+}: DocumentViewerProps) {
   const handleDeleteClick = async () => {
     if (!onDelete || isDeleting) return;
 
@@ -75,10 +83,28 @@ export function DocumentViewer({ document, onDelete, isDeleting = false }: Docum
 
       {document.summary ? (
         <section className="border border-border bg-background p-6">
-          <h2 className="text-lg font-bold text-foreground">Summary</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-foreground">AI Summary</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Generated with your selected local model.</p>
+            </div>
+            <button type="button" onClick={() => void onGenerateSummary?.(document.id)} disabled={!onGenerateSummary || isGeneratingSummary} className="inline-flex items-center gap-2 rounded-sm border border-border bg-muted px-3 py-2 text-sm text-foreground hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50">
+              <Sparkles className="h-4 w-4" />
+              {isGeneratingSummary ? "Generating..." : "Regenerate"}
+            </button>
+          </div>
           <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-muted-foreground">{document.summary}</p>
         </section>
-      ) : null}
+      ) : (
+        <section className="border border-border bg-background p-6">
+          <h2 className="text-lg font-bold text-foreground">AI Summary</h2>
+          <p className="mt-2 text-sm text-muted-foreground">No model-generated summary is available yet.</p>
+          <button type="button" onClick={() => void onGenerateSummary?.(document.id)} disabled={!onGenerateSummary || isGeneratingSummary || !document.content_preview} className="mt-4 inline-flex items-center gap-2 rounded-sm border border-border bg-primary px-3 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
+            <Sparkles className="h-4 w-4" />
+            {isGeneratingSummary ? "Generating..." : "Generate summary"}
+          </button>
+        </section>
+      )}
 
       <section className="border border-border bg-background p-6">
         <h2 className="text-lg font-bold text-foreground">Content Preview</h2>

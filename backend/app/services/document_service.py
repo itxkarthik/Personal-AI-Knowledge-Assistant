@@ -5,9 +5,11 @@ import logging
 import uuid
 from pathlib import Path
 
+from app.ai.document_summary import generate_document_summary
 from app.ai.embeddings import generate_embeddings
 from app.ai.vectorstore import PgVectorStore
 from app.core.config import settings
+from app.core.exceptions import AIServiceUnavailableError
 from app.models.document import Document, DocumentChunks
 from app.models.user import User
 from app.schemas.document import DocumentUpdate
@@ -94,7 +96,6 @@ async def upload_and_process_document(
         document.content_preview = create_content_preview(content)
         document.word_count = len(content.split()) if content else 0
         document.chunk_count = len(chunks)
-        document.summary = create_content_preview(content, 300) if content else None
         document.status = "completed"
 
         chunk_rows: list[DocumentChunks] = []
@@ -131,6 +132,21 @@ async def upload_and_process_document(
             except Exception as e:
                 logger.warning(
                     f"Failed to generate embeddings: {str(e)}. Document stored without embeddings."
+                )
+
+        if content:
+            try:
+                document.summary = await generate_document_summary(
+                    session=session,
+                    user_id=current_user.id,
+                    title=document.title,
+                    content=content,
+                )
+            except Exception:
+                document.summary = None
+                logger.exception(
+                    "Failed to generate document summary; upload will remain available",
+                    extra={"document_id": document.id, "user_id": current_user.id},
                 )
 
         session.add(document)
@@ -242,6 +258,39 @@ def update_document_metadata(
     update_data = payload.model_dump(exclude_unset=True)
     for key, value in update_data.items():
         setattr(document, key, value)
+
+    session.add(document)
+    session.commit()
+    session.refresh(document)
+    return document
+
+
+async def regenerate_document_summary(
+    *, session: Session, current_user: User, document_id: int
+) -> Document:
+    document = get_document_by_id(
+        session=session, current_user=current_user, document_id=document_id
+    )
+    if current_user.id is None:
+        raise HTTPException(status_code=400, detail="Invalid user context")
+    if not document.content:
+        raise HTTPException(status_code=409, detail="Document content is not available")
+
+    try:
+        document.summary = await generate_document_summary(
+            session=session,
+            user_id=current_user.id,
+            title=document.title,
+            content=document.content,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to regenerate document summary",
+            extra={"document_id": document.id, "user_id": current_user.id},
+        )
+        raise AIServiceUnavailableError(
+            "The local model could not generate this document summary."
+        ) from exc
 
     session.add(document)
     session.commit()
