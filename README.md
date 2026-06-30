@@ -23,7 +23,7 @@ A self-hosted workspace for Markdown notes, documents, knowledge graphs, and con
 ### Run the stack
 
 ```bash
-git clone https://github.com/Karthik-Git763/Personal-AI-Knowledge-Assistant.git
+git clone https://github.com/itxkarthik/Personal-AI-Knowledge-Assistant.git
 cd Personal-AI-Knowledge-Assistant
 docker compose up --build -d
 ```
@@ -87,7 +87,19 @@ Model data is retained in the `ollama_data` volume. Override `OLLAMA_CHAT_MODEL`
 
 ### Change models
 
-Signed-in users can choose any installed chat model from **Settings > Local AI model**. The selection is saved per account and takes effect on the next chat response.
+Signed-in users can change their chat model from **Settings > Local AI model**:
+
+1. Install the model in Ollama if it is not already available:
+
+   ```bash
+   docker compose exec ollama ollama pull gemma3:1b
+   ```
+
+2. Open **Settings > Local AI model** in the application.
+3. Select **Refresh** to reload the installed model list.
+4. Choose the model and select **Save model**.
+
+The preference is saved per account and applies to new chat responses. The embedding model remains separate because changing its dimensions requires rebuilding vector indexes.
 
 `OLLAMA_CHAT_MODEL` and `OLLAMA_EMBEDDING_MODEL` set the Docker defaults for users who have no saved preference. Put overrides in `.env.docker`:
 
@@ -102,7 +114,7 @@ Start Compose with that environment file:
 docker compose --env-file .env.docker --profile ai up --build -d
 ```
 
-Before assigning a different model to one account, install it in the shared Ollama volume:
+You can also assign a model from the command line. First install it in the shared Ollama volume:
 
 ```bash
 docker compose exec ollama ollama pull gemma3:1b
@@ -198,3 +210,5 @@ backend/app/schemas/   Request and response schemas
 ## Contributing
 
 Keep pull requests focused, include verification steps, and document any environment or schema changes. Use clear commit messages that describe behavior rather than implementation detail.
+
+Use [GitHub Issues](https://github.com/itxkarthik/Personal-AI-Knowledge-Assistant/issues) for bug reports, support questions, and feature requests.
