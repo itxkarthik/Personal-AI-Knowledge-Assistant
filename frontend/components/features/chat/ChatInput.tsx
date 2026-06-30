@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 interface ChatInputProps {
   onSend: (content: string) => Promise<void>;
@@ -10,16 +10,20 @@ interface ChatInputProps {
 
 export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   const [content, setContent] = useState("");
+  const isSubmittingRef = useRef(false);
 
   const handleSubmit = async () => {
     const trimmed = content.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || isSubmittingRef.current) return;
 
+    isSubmittingRef.current = true;
     try {
       await onSend(trimmed);
       setContent("");
     } catch {
       // The page displays the request error. Keep the draft available for retry.
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 

@@ -9,7 +9,7 @@ const ENDPOINT_TIMEOUTS = {
 	"POST /documents": 120000,
 
 	// RAG and search operations - AI processing takes time
-	"POST /chat": 60000, // 60 seconds for chat responses
+	"POST /chat": 180000, // Match the backend model timeout for slow local responses
 	"GET /search": 60000, // 60 seconds for semantic search
 	"POST /knowledge-graph": 60000, // 60 seconds for graph generation
 	"POST /rag": 60000, // 60 seconds for RAG queries

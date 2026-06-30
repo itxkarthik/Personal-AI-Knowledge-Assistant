@@ -12,11 +12,23 @@ from app.models.user import User
 from app.schemas.chat import ChatCreate, ChatMessageCreate
 from app.utils.text_processing import create_content_preview
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlalchemy.orm import joinedload
 from sqlmodel import Session, col, select
 
 logger = logging.getLogger(__name__)
+
+
+def _acquire_chat_generation_lock(*, session: Session, chat_session_id: int) -> None:
+    result = session.exec(
+        text("SELECT pg_try_advisory_xact_lock(:namespace, :chat_session_id)"),
+        params={"namespace": 5262145, "chat_session_id": chat_session_id},
+    ).one()
+    if not bool(result[0]):
+        raise HTTPException(
+            status_code=409,
+            detail="A reply is already being generated for this chat session.",
+        )
 
 
 def create_chat_session(
@@ -89,6 +101,9 @@ def send_message_and_get_response(
         current_user=current_user,
         chat_session_id=chat_session_id,
     )
+    if chat_session.id is None:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    _acquire_chat_generation_lock(session=session, chat_session_id=chat_session.id)
 
     try:
         rag_answer, rag_sources = _invoke_rag(

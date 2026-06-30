@@ -111,7 +111,7 @@ async function streamAssistantMessage(
 	});
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
 	sessions: [],
 	total: 0,
 	selectedSession: null,
@@ -189,6 +189,10 @@ export const useChatStore = create<ChatState>((set) => ({
 	},
 
 	sendMessage: async (sessionId, content) => {
+		if (get().isSendingMessage) {
+			throw new Error("A message is already being processed.");
+		}
+
 		const normalizedContent = content.trim();
 		if (!normalizedContent) {
 			throw new Error("Message content is required.");

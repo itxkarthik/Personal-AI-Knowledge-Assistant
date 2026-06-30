@@ -2,6 +2,8 @@ from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import patch
 
+from fastapi import HTTPException
+
 from app.core.exceptions import AIServiceUnavailableError
 from app.schemas.chat import ChatMessageCreate
 from app.services.chat_service import send_message_and_get_response
@@ -47,6 +49,7 @@ class ChatServiceTests(TestCase):
                 "app.services.chat_service._invoke_rag",
                 side_effect=ConnectionError("Ollama is down"),
             ),
+            patch("app.services.chat_service._acquire_chat_generation_lock"),
         ):
             with self.assertRaises(AIServiceUnavailableError):
                 send_message_and_get_response(
@@ -72,6 +75,7 @@ class ChatServiceTests(TestCase):
                 "app.services.chat_service._invoke_rag",
                 return_value=("Grounded answer", {"documents": [], "chunks": []}),
             ),
+            patch("app.services.chat_service._acquire_chat_generation_lock"),
         ):
             user_message, assistant_message = send_message_and_get_response(
                 session=session,
@@ -85,3 +89,33 @@ class ChatServiceTests(TestCase):
         self.assertEqual(session.commit_count, 1)
         self.assertEqual(session.rollback_count, 0)
         self.assertEqual(session.added, [user_message, assistant_message, chat_session])
+
+    def test_concurrent_send_is_rejected_before_rag_runs(self) -> None:
+        session, current_user, chat_session = _chat_context()
+
+        with (
+            patch(
+                "app.services.chat_service.get_chat_session_by_id",
+                return_value=chat_session,
+            ),
+            patch(
+                "app.services.chat_service._acquire_chat_generation_lock",
+                side_effect=HTTPException(
+                    status_code=409,
+                    detail="A reply is already being generated for this chat session.",
+                ),
+            ),
+            patch("app.services.chat_service._invoke_rag") as invoke_rag,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                send_message_and_get_response(
+                    session=session,
+                    current_user=current_user,
+                    chat_session_id=chat_session.id,
+                    payload=ChatMessageCreate(content="Hello", role="user"),
+                )
+
+        self.assertEqual(raised.exception.status_code, 409)
+        invoke_rag.assert_not_called()
+        self.assertEqual(session.added, [])
+        self.assertEqual(session.commit_count, 0)
