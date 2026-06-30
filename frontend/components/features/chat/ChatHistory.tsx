@@ -33,7 +33,7 @@ export function ChatHistory({ messages, isLoading = false, streamingMessageId = 
     <section className="h-[56vh] overflow-y-auto border border-border bg-background p-3">
       {messages.length === 0 ? (
         <div className="flex h-full items-center justify-center border border-dashed border-border bg-muted p-5 text-sm text-muted-foreground">
-          Start with a question. Answers will include source references from your library.
+          Ask naturally. Workspace questions use your notes and documents when relevant.
         </div>
       ) : (
         <div className="space-y-3">

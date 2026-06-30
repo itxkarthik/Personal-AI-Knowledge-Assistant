@@ -36,7 +36,7 @@ export async function globalSearch(params: GlobalSearchParams): Promise<SearchRe
 		queryParams.date_to = params.dateTo;
 	}
 
-	const response = await apiClient.get<SearchResponse>("/search/", {
+	const response = await apiClient.get<SearchResponse>("/search", {
 		params: queryParams,
 	});
 

@@ -1,10 +1,11 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 
 import { Header } from "@/components/layout/Header";
+import { MobileNavigation } from "@/components/layout/MobileNavigation";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { useAuthStore } from "@/store/authStore";
@@ -14,24 +15,29 @@ interface DashboardLayoutProps {
   children: ReactNode;
 }
 
+const SIDEBAR_EVENT = "pka-sidebar-change";
+
+function subscribeToSidebar(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(SIDEBAR_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(SIDEBAR_EVENT, callback);
+  };
+}
+
+function getSidebarSnapshot() {
+  return window.localStorage.getItem("pka-sidebar-expanded") !== "false";
+}
+
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const router = useRouter();
   const { isAuthenticated, hasHydrated } = useAuthStore();
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(true);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("pka-sidebar-expanded");
-    if (stored) {
-      setIsSidebarExpanded(stored === "true");
-    }
-  }, []);
+  const isSidebarExpanded = useSyncExternalStore(subscribeToSidebar, getSidebarSnapshot, () => true);
 
   const toggleSidebar = () => {
-    setIsSidebarExpanded((current) => {
-      const next = !current;
-      window.localStorage.setItem("pka-sidebar-expanded", String(next));
-      return next;
-    });
+    window.localStorage.setItem("pka-sidebar-expanded", String(!isSidebarExpanded));
+    window.dispatchEvent(new Event(SIDEBAR_EVENT));
   };
 
   useEffect(() => {
@@ -59,9 +65,10 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       <div className="min-h-[100dvh] w-full bg-background text-foreground">
         <Sidebar expanded={isSidebarExpanded} onToggle={toggleSidebar} />
         <Header sidebarExpanded={isSidebarExpanded} />
+        <MobileNavigation />
         <main
           className={cn(
-            "px-4 pb-8 pt-20 transition-[margin] duration-200 lg:px-6",
+            "px-4 pb-[calc(5rem+env(safe-area-inset-bottom))] pt-[4.5rem] transition-[margin] duration-200 lg:px-6 lg:pb-8 lg:pt-20",
             isSidebarExpanded ? "lg:ml-64" : "lg:ml-16"
           )}
         >

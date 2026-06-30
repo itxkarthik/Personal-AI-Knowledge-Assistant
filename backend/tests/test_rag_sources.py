@@ -1,4 +1,5 @@
 from unittest import TestCase
+from unittest.mock import AsyncMock, patch
 
 from app.ai.llm import build_chat_messages
 from app.ai.rag import (
@@ -6,9 +7,12 @@ from app.ai.rag import (
     _build_context_chunks,
     _build_sources_payload,
     _format_workspace_inventory,
+    _is_casual_conversation,
     _merge_inventory_sources,
+    _needs_history_for_retrieval,
     _needs_workspace_inventory,
     _repair_exact_terms,
+    run_rag_pipeline,
 )
 from app.ai.vectorstore import NoteVectorSearchResult
 
@@ -70,6 +74,36 @@ class RAGNoteSourceTests(TestCase):
         self.assertTrue(_needs_workspace_inventory("What are all the projects I have?"))
         self.assertTrue(_needs_workspace_inventory("Tell me about my projects\nWhat are they?"))
         self.assertFalse(_needs_workspace_inventory("When is the Atlas launch?"))
+
+    def test_casual_conversation_bypasses_workspace_retrieval(self) -> None:
+        self.assertTrue(_is_casual_conversation("What's up?"))
+        self.assertTrue(_is_casual_conversation("How are you?"))
+        self.assertTrue(_is_casual_conversation("What can you do?"))
+        self.assertFalse(_is_casual_conversation("What are my projects?"))
+
+    def test_casual_response_does_not_retrieve_workspace_content(self) -> None:
+        with (
+            patch("app.ai.rag.generate_embedding") as generate_embedding,
+            patch("app.ai.rag.LLMService") as llm_service,
+        ):
+            llm_service.return_value.generate_response = AsyncMock(
+                return_value="Doing well. What can I help with?"
+            )
+
+            result = run_rag_pipeline(
+                session=object(),
+                user_id=1,
+                query="What's up?",
+            )
+
+        generate_embedding.assert_not_called()
+        self.assertEqual(result.answer, "Doing well. What can I help with?")
+        self.assertEqual(result.sources, {"documents": [], "chunks": [], "notes": []})
+
+    def test_only_ambiguous_follow_ups_expand_the_retrieval_query(self) -> None:
+        self.assertTrue(_needs_history_for_retrieval("When is it?"))
+        self.assertTrue(_needs_history_for_retrieval("What about the deadline?"))
+        self.assertFalse(_needs_history_for_retrieval("Explain the Atlas project"))
 
     def test_inventory_context_and_sources_include_every_entry(self) -> None:
         entries = [

@@ -37,7 +37,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
           }}
           rows={3}
           disabled={disabled}
-          placeholder="Ask about your documents, notes, or chat history..."
+          placeholder="Ask about your workspace or anything else..."
           className="w-full resize-none rounded-sm border border-border bg-muted px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
 

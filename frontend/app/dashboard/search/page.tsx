@@ -1,7 +1,8 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { RefreshCw } from "lucide-react";
-import { useCallback, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 
 import { globalSearch, type SearchEntityType } from "@/lib/api/search";
 import { SearchBar } from "@/components/features/search/SearchBar";
@@ -11,8 +12,12 @@ import type { SearchResultItem } from "@/types";
 
 const DEFAULT_TYPES: SearchEntityType[] = ["document", "note", "chat"];
 
-export default function SearchPage() {
-  const [query, setQuery] = useState("");
+interface SearchWorkspaceProps {
+  initialQuery: string;
+}
+
+function SearchWorkspace({ initialQuery }: SearchWorkspaceProps) {
+  const [query, setQuery] = useState(initialQuery);
   const [selectedTypes, setSelectedTypes] = useState<SearchEntityType[]>(DEFAULT_TYPES);
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -20,9 +25,9 @@ export default function SearchPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const runSearch = useCallback(
-    async (targetPage: number, entityTypes: SearchEntityType[] = selectedTypes) => {
-      const trimmed = query.trim();
+  const performSearch = useCallback(
+    async (searchQuery: string, targetPage: number, entityTypes: SearchEntityType[]) => {
+      const trimmed = searchQuery.trim();
       if (!trimmed) {
         setResults([]);
         setTotal(0);
@@ -44,8 +49,25 @@ export default function SearchPage() {
         setIsLoading(false);
       }
     },
-    [query, selectedTypes]
+    []
   );
+
+  const runSearch = useCallback(
+    async (targetPage: number, entityTypes: SearchEntityType[] = selectedTypes) => {
+      await performSearch(query, targetPage, entityTypes);
+    },
+    [performSearch, query, selectedTypes]
+  );
+
+  useEffect(() => {
+    if (!initialQuery) return;
+
+    const timer = window.setTimeout(() => {
+      void performSearch(initialQuery, 1, DEFAULT_TYPES);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [initialQuery, performSearch]);
 
   const pageSize = 20;
   const hasPrev = page > 1;
@@ -136,5 +158,20 @@ export default function SearchPage() {
         </div>
       ) : null}
     </div>
+  );
+}
+
+function SearchPageContent() {
+  const searchParams = useSearchParams();
+  const requestedQuery = searchParams.get("q")?.trim() ?? "";
+
+  return <SearchWorkspace key={requestedQuery} initialQuery={requestedQuery} />;
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="border border-border bg-background p-6 text-sm text-muted-foreground">Loading search...</div>}>
+      <SearchPageContent />
+    </Suspense>
   );
 }

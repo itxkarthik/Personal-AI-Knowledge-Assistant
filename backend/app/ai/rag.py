@@ -51,6 +51,111 @@ class WorkspaceInventoryEntry:
     description: str
 
 
+_CASUAL_QUERIES = {
+    "bye",
+    "cool",
+    "good afternoon",
+    "good evening",
+    "good morning",
+    "goodbye",
+    "great",
+    "hello",
+    "hello there",
+    "hey",
+    "hey there",
+    "hi",
+    "how are things",
+    "how are you",
+    "hows it going",
+    "nice",
+    "ok",
+    "okay",
+    "see you",
+    "thank you",
+    "thank you so much",
+    "thanks",
+    "what can you do",
+    "what is up",
+    "whats up",
+    "who are you",
+    "yo",
+}
+
+
+def _empty_sources() -> dict[str, list[Any]]:
+    return {"documents": [], "chunks": [], "notes": []}
+
+
+def _normalize_query(query: str) -> str:
+    normalized = query.casefold().replace("’", "'").replace("'", "")
+    return " ".join(re.sub(r"[^a-z0-9\s]", " ", normalized).split())
+
+
+def _is_casual_conversation(query: str) -> bool:
+    return _normalize_query(query) in _CASUAL_QUERIES
+
+
+def _needs_history_for_retrieval(query: str) -> bool:
+    normalized = _normalize_query(query)
+    words = normalized.split()
+    if len(words) > 10:
+        return False
+
+    follow_up_terms = {
+        "it",
+        "its",
+        "that",
+        "this",
+        "they",
+        "them",
+        "their",
+        "those",
+        "these",
+    }
+    return bool(follow_up_terms.intersection(words)) or normalized.startswith(
+        ("and ", "what about ", "how about ")
+    )
+
+
+def _generate_general_response(
+    *,
+    session: Session,
+    user_id: int,
+    query: str,
+    conversation_history: Sequence[dict[str, str]] | None,
+    casual: bool,
+) -> RAGResult:
+    if casual:
+        system_prompt = (
+            "You are a friendly, capable personal knowledge assistant. Respond to ordinary "
+            "conversation naturally and briefly. Do not mention, quote, or summarize workspace "
+            "documents unless the user explicitly asks about them. You can answer general "
+            "questions and help users work with their notes and documents."
+        )
+    else:
+        system_prompt = (
+            "You are a helpful personal knowledge assistant with general knowledge. Answer general "
+            "questions directly and naturally. If the user asks about their own notes, documents, "
+            "projects, or personal facts and no workspace context is available, say you could not "
+            "find that information rather than inventing it. Do not claim to cite or use documents "
+            "that were not provided."
+        )
+
+    messages = build_chat_messages(
+        user_prompt=query,
+        system_prompt=system_prompt,
+        conversation_history=(conversation_history or [])[-6:],
+    )
+    answer = _run_async(
+        LLMService(session=session, user_id=user_id).generate_response(
+            messages=messages,
+            temperature=0.4,
+            max_tokens=300,
+        )
+    )
+    return RAGResult(answer=answer.strip(), sources=_empty_sources())
+
+
 def run_rag_pipeline(
     *,
     session: Session,
@@ -61,7 +166,17 @@ def run_rag_pipeline(
     if not query.strip():
         return RAGResult(
             answer="Please provide a non-empty question.",
-            sources={"documents": [], "chunks": [], "notes": []},
+            sources=_empty_sources(),
+        )
+
+    query = query.strip()
+    if _is_casual_conversation(query):
+        return _generate_general_response(
+            session=session,
+            user_id=user_id,
+            query=query,
+            conversation_history=conversation_history,
+            casual=True,
         )
 
     recent_user_context = [
@@ -69,7 +184,11 @@ def run_rag_pipeline(
         for message in (conversation_history or [])[-4:]
         if message.get("role") == "user" and message.get("content")
     ]
-    retrieval_query = "\n".join([*recent_user_context, query])
+    retrieval_query = (
+        "\n".join([*recent_user_context, query])
+        if _needs_history_for_retrieval(query)
+        else query
+    )
 
     query_embedding, embedding_model = _run_async(
         generate_embedding(
@@ -90,7 +209,7 @@ def run_rag_pipeline(
 
     vector_store = PgVectorStore(session=session)
     vector_store.ensure_schema(embedding_dimensions=len(query_embedding))
-    _backfill_missing_embeddings(
+    ensure_workspace_embeddings(
         session=session,
         vector_store=vector_store,
         user_id=user_id,
@@ -144,9 +263,12 @@ def run_rag_pipeline(
     )
 
     if not chunk_hits and not note_hits and not inventory_entries:
-        return RAGResult(
-            answer="I couldn't find relevant context in your documents or notes yet.",
-            sources={"documents": [], "chunks": [], "notes": []},
+        return _generate_general_response(
+            session=session,
+            user_id=user_id,
+            query=query,
+            conversation_history=conversation_history,
+            casual=False,
         )
 
     document_map = _load_document_map(
@@ -161,12 +283,16 @@ def run_rag_pipeline(
         context_chunks.insert(0, _format_workspace_inventory(inventory_entries))
 
     system_prompt = (
-        "You are a personal knowledge assistant. Answer using only the provided document and note "
-        "context. Synthesize information across every relevant source instead of relying on exact "
-        "word overlap with the question. For list, overview, comparison, or count questions, include "
-        "all distinct supported items and use concise bullets when helpful. Preserve exact names, "
-        "codes, dates, and phrases. Do not invent details or repeat the raw context. If context is "
-        "insufficient, say what information is missing."
+        "You are a personal knowledge assistant with normal conversational and general-knowledge "
+        "ability. First decide whether the reference context is relevant to the current question. "
+        "For questions about the user's workspace or personal information, use only relevant "
+        "document and note context and never invent missing details. For ordinary conversation or "
+        "general-knowledge questions, ignore irrelevant reference context and answer naturally. "
+        "Do not preface answers with phrases such as 'Based on the provided document' unless the "
+        "user asks for source attribution. Synthesize across relevant sources instead of relying on "
+        "exact word overlap. For list, overview, comparison, or count questions, include all "
+        "distinct supported items. Preserve exact names, codes, dates, and phrases, and do not "
+        "repeat the raw context."
     )
 
     messages = build_chat_messages(
@@ -372,68 +498,74 @@ def _build_context_chunks(
     return context_chunks
 
 
-def _backfill_missing_embeddings(
+def ensure_workspace_embeddings(
     *,
     session: Session,
     vector_store: PgVectorStore,
     user_id: int,
     embedding_model: str,
+    include_documents: bool = True,
+    include_notes: bool = True,
 ) -> None:
-    indexed_chunk_ids = vector_store.indexed_document_chunk_ids(
-        user_id=user_id, model=embedding_model
-    )
-    missing_chunks = [
-        chunk
-        for chunk in vector_store.active_document_chunks(user_id=user_id)
-        if chunk.id is not None and chunk.id not in indexed_chunk_ids
-    ]
+    if include_documents:
+        indexed_chunk_ids = vector_store.indexed_document_chunk_ids(
+            user_id=user_id, model=embedding_model
+        )
+        missing_chunks = [
+            chunk
+            for chunk in vector_store.active_document_chunks(user_id=user_id)
+            if chunk.id is not None and chunk.id not in indexed_chunk_ids
+        ]
 
-    for start in range(0, len(missing_chunks), 32):
-        batch = missing_chunks[start : start + 32]
-        embeddings, _ = _run_async(
-            generate_embeddings(
-                session=session,
+        for start in range(0, len(missing_chunks), 32):
+            batch = missing_chunks[start : start + 32]
+            embeddings, _ = _run_async(
+                generate_embeddings(
+                    session=session,
+                    user_id=user_id,
+                    texts=[chunk.content for chunk in batch],
+                    model=embedding_model,
+                )
+            )
+            vector_store.store_document_chunk_embeddings(
+                chunks=batch,
+                embeddings=embeddings,
                 user_id=user_id,
-                texts=[chunk.content for chunk in batch],
                 model=embedding_model,
             )
-        )
-        vector_store.store_document_chunk_embeddings(
-            chunks=batch,
-            embeddings=embeddings,
-            user_id=user_id,
-            model=embedding_model,
-        )
 
-    active_notes = session.exec(
-        select(Notes).where(Notes.user_id == user_id, Notes.is_deleted.is_not(True))
-    ).all()
-    indexed_note_hashes = vector_store.note_embedding_hashes(user_id=user_id, model=embedding_model)
-    stale_notes: list[tuple[Notes, str, str]] = []
-    for note in active_notes:
-        if note.id is None:
-            continue
-        embedding_text = f"{note.title}\n\n{note.content}"[:12000]
-        content_hash = hashlib.sha256(embedding_text.encode("utf-8")).hexdigest()
-        if indexed_note_hashes.get(note.id) != content_hash:
-            stale_notes.append((note, embedding_text, content_hash))
+    if include_notes:
+        active_notes = session.exec(
+            select(Notes).where(Notes.user_id == user_id, Notes.is_deleted.is_not(True))
+        ).all()
+        indexed_note_hashes = vector_store.note_embedding_hashes(
+            user_id=user_id, model=embedding_model
+        )
+        stale_notes: list[tuple[Notes, str, str]] = []
+        for note in active_notes:
+            if note.id is None:
+                continue
+            embedding_text = f"{note.title}\n\n{note.content}"[:12000]
+            content_hash = hashlib.sha256(embedding_text.encode("utf-8")).hexdigest()
+            if indexed_note_hashes.get(note.id) != content_hash:
+                stale_notes.append((note, embedding_text, content_hash))
 
-    for start in range(0, len(stale_notes), 32):
-        batch = stale_notes[start : start + 32]
-        embeddings, _ = _run_async(
-            generate_embeddings(
-                session=session,
+        for start in range(0, len(stale_notes), 32):
+            batch = stale_notes[start : start + 32]
+            embeddings, _ = _run_async(
+                generate_embeddings(
+                    session=session,
+                    user_id=user_id,
+                    texts=[embedding_text for _, embedding_text, _ in batch],
+                    model=embedding_model,
+                )
+            )
+            vector_store.store_note_embeddings(
+                notes=[(int(note.id), content_hash) for note, _, content_hash in batch],
+                embeddings=embeddings,
                 user_id=user_id,
-                texts=[embedding_text for _, embedding_text, _ in batch],
                 model=embedding_model,
             )
-        )
-        vector_store.store_note_embeddings(
-            notes=[(int(note.id), content_hash) for note, _, content_hash in batch],
-            embeddings=embeddings,
-            user_id=user_id,
-            model=embedding_model,
-        )
 
 
 def _load_document_map(*, session: Session, document_ids: list[int]) -> dict[int, Document]:

@@ -9,7 +9,7 @@ import {
   FileText,
   NotebookPen,
   MessageSquare,
-  BarChart3,
+  Search,
   Settings,
   HelpCircle,
   Plus,
@@ -25,7 +25,7 @@ const iconMap: Record<string, React.ReactNode> = {
   description: <FileText className="h-4 w-4" />,
   note: <NotebookPen className="h-4 w-4" />,
   smart_toy: <MessageSquare className="h-4 w-4" />,
-  monitoring: <BarChart3 className="h-4 w-4" />,
+  search: <Search className="h-4 w-4" />,
   settings: <Settings className="h-4 w-4" />,
   help: <HelpCircle className="h-4 w-4" />,
 };
@@ -36,7 +36,7 @@ const navItems = [
   { href: "/dashboard/documents", label: "Documents", icon: "description" },
   { href: "/dashboard/notes", label: "Notes", icon: "note" },
   { href: "/dashboard/chat", label: "Chat Assistant", icon: "smart_toy" },
-  { href: "/dashboard/search", label: "Analytics", icon: "monitoring" },
+  { href: "/dashboard/search", label: "Search", icon: "search" },
 ];
 
 const secondaryNavItems = [
