@@ -91,6 +91,7 @@ class TestInputValidation:
     def test_sanitize_plain_text(self):
         """Plain text should be HTML-escaped and cleaned."""
         result = sanitize_plain_text("<script>alert('xss')</script>")
+        assert result is not None
         assert "<script>" not in result
         assert "&lt;script&gt;" in result
 
@@ -98,17 +99,20 @@ class TestInputValidation:
         """HTML content should remove dangerous tags."""
         # Script tags should be removed
         result = sanitize_html_content("<p>Hello</p><script>alert('xss')</script>")
+        assert result is not None
         assert "<script>" not in result
         assert "<p>Hello</p>" in result
 
         # Event handlers should be removed
         result = sanitize_html_content("<div onclick='alert(1)'>text</div>")
+        assert result is not None
         assert "onclick" not in result
         assert "text" in result
 
     def test_sanitize_html_iframe_removal(self):
         """iframes should be removed from HTML content."""
         result = sanitize_html_content("<p>Content</p><iframe src='evil.com'></iframe>")
+        assert result is not None
         assert "<iframe" not in result
         assert "Content" in result
 
@@ -121,7 +125,10 @@ class TestNoteValidation:
         response = client.post(
             "/api/v1/notes",
             json={"title": "<script>alert('xss')</script>", "content": "Valid content"},
-            headers={"Authorization": "Bearer fake-token", "X-CSRF-Token": "fake-token"},
+            headers={
+                "Authorization": "Bearer fake-token",
+                "X-CSRF-Token": "fake-token",
+            },
         )
         # Should fail validation or auth (since token is fake)
         # The key is that XSS payload is validated before reaching the database
@@ -136,7 +143,10 @@ class TestNoteValidation:
                 "content": "Valid content",
                 "keywords": ["'; DROP TABLE notes; --"],
             },
-            headers={"Authorization": "Bearer fake-token", "X-CSRF-Token": "fake-token"},
+            headers={
+                "Authorization": "Bearer fake-token",
+                "X-CSRF-Token": "fake-token",
+            },
         )
         # Should fail validation or auth
         assert response.status_code in [401, 403, 422]
@@ -150,7 +160,10 @@ class TestChatValidation:
         response = client.post(
             "/api/v1/chat/test-session/messages",
             json={"content": "Hello <img src=x onerror='alert(1)'>", "role": "user"},
-            headers={"Authorization": "Bearer fake-token", "X-CSRF-Token": "fake-token"},
+            headers={
+                "Authorization": "Bearer fake-token",
+                "X-CSRF-Token": "fake-token",
+            },
         )
         # Should fail auth or validation
         assert response.status_code in [401, 403, 404, 422]
@@ -164,7 +177,10 @@ class TestDocumentValidation:
         response = client.post(
             "/api/v1/documents",
             json={"title": "<iframe src='http://evil.com'></iframe>", "tags": []},
-            headers={"Authorization": "Bearer fake-token", "X-CSRF-Token": "fake-token"},
+            headers={
+                "Authorization": "Bearer fake-token",
+                "X-CSRF-Token": "fake-token",
+            },
         )
         # Should fail auth or validation
         assert response.status_code in [401, 403, 422]
@@ -233,10 +249,12 @@ class TestCSRFProtection:
 
     def test_login_endpoint_csrf_exempt(self):
         """Login endpoint should be exempt from CSRF for initial requests."""
-        # This endpoint doesn't require CSRF on initial visit
-        # (though form submission might)
-        response = client.get("/api/v1/")  # Root endpoint
-        assert response.status_code == 200
+        response = client.post(
+            "/api/v1/login/access-token",
+            data={"username": "missing@example.com", "password": "invalid-password"},
+        )
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Incorrect Email or Password"
 
 
 class TestCombinedSecurity:
@@ -254,7 +272,10 @@ class TestCombinedSecurity:
         response = client.post(
             "/api/v1/notes",
             json=malicious_payload,
-            headers={"Authorization": "Bearer fake-token", "X-CSRF-Token": "test-token"},
+            headers={
+                "Authorization": "Bearer fake-token",
+                "X-CSRF-Token": "test-token",
+            },
         )
         # Should be rejected
         assert response.status_code in [401, 403, 422]
@@ -270,7 +291,10 @@ class TestCombinedSecurity:
         response = client.post(
             "/api/v1/notes",
             json=safe_payload,
-            headers={"Authorization": "Bearer fake-token", "X-CSRF-Token": "test-token"},
+            headers={
+                "Authorization": "Bearer fake-token",
+                "X-CSRF-Token": "test-token",
+            },
         )
         # Should fail at authentication level, not validation
         # (because we're using fake token, but validation passed)
@@ -329,6 +353,7 @@ def manual_test_sanitization():
     # Test plain text sanitization
     text = "<script>alert('xss')</script>"
     sanitized = sanitize_plain_text(text)
+    assert sanitized is not None
     print(f"Plain text input: {text}")
     print(f"Sanitized output: {sanitized}")
     assert "<script>" not in sanitized
@@ -337,6 +362,7 @@ def manual_test_sanitization():
     # Test HTML content sanitization
     html = "<p>Hello</p><script>alert('xss')</script>"
     sanitized = sanitize_html_content(html)
+    assert sanitized is not None
     print(f"HTML input: {html}")
     print(f"Sanitized output: {sanitized}")
     assert "<script>" not in sanitized

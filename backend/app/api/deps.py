@@ -80,7 +80,8 @@ def get_current_user(request: Request, session: SessionDep, token: TokenDep) -> 
         token_data = TokenPayload(**payload)
     except (InvalidTokenError, ValidationError):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Could not validate credentials"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
         )
     # Check if the token has been blacklisted (logout / revocation)
     if token_data.jti:
@@ -89,7 +90,8 @@ def get_current_user(request: Request, session: SessionDep, token: TokenDep) -> 
         ).first()
         if blacklisted:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been revoked"
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
             )
     user = session.get(User, token_data.sub)
     if not user:

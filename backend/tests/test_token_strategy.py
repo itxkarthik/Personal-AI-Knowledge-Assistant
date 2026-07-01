@@ -20,6 +20,9 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 import pytest
+from fastapi.testclient import TestClient
+from sqlmodel import Session, col, delete, select
+
 from app import crud
 from app.core import security
 from app.core.config import settings
@@ -27,8 +30,6 @@ from app.core.database import engine
 from app.main import app
 from app.models.user import RefreshToken, TokenBlacklist, User, UserCreate
 from app.services import auth_service
-from fastapi.testclient import TestClient
-from sqlmodel import Session, delete, select
 
 client = TestClient(app)
 
@@ -49,9 +50,16 @@ def db_session():
 def test_user(db_session: Session) -> User:
     """Create a test user."""
     user_create = UserCreate(
-        email="tokentest@example.com", password="testpassword123", full_name="Token Test User"
+        email="tokentest@example.com",
+        password="testpassword123",
+        full_name="Token Test User",
     )
     return crud.create_user(session=db_session, user_create=user_create)
+
+
+def _persisted_user_id(user: User) -> int:
+    assert user.id is not None
+    return user.id
 
 
 class TestTokenCreation:
@@ -73,7 +81,9 @@ class TestTokenCreation:
 
         # Decode without verification to check claims
         decoded = jwt.decode(
-            token_pair.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
 
         assert "exp" in decoded
@@ -94,7 +104,9 @@ class TestTokenCreation:
         token_pair = auth_service.create_token_pair(session=db_session, user=test_user)
 
         decoded = jwt.decode(
-            token_pair.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
 
         assert "jti" in decoded
@@ -119,8 +131,10 @@ class TestTokenCreation:
         hashed = security.hash_refresh_token(token_pair.refresh_token)
         db_token = crud.get_refresh_token_by_hash(session=db_session, hashed_token=hashed)
 
+        assert db_token is not None
         now = datetime.now(UTC)
-        time_until_exp = (db_token.expires_at - now).total_seconds()
+        expires_at = db_token.expires_at.replace(tzinfo=UTC)
+        time_until_exp = (expires_at - now).total_seconds()
 
         # Should be approximately 7 days (allow 5 min drift)
         expected_seconds = 7 * 24 * 60 * 60
@@ -137,10 +151,14 @@ class TestTokenCreation:
 
         # But should be for same user
         decoded1 = jwt.decode(
-            token_pair1.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair1.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
         decoded2 = jwt.decode(
-            token_pair2.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair2.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
         assert decoded1["sub"] == decoded2["sub"] == str(test_user.id)
 
@@ -154,7 +172,9 @@ class TestTokenRefresh:
 
         # Exchange refresh token for new pair
         new_pair = auth_service.refresh_access_token_from_refresh(
-            session=db_session, user_id=test_user.id, refresh_token=initial_pair.refresh_token
+            session=db_session,
+            user_id=_persisted_user_id(test_user),
+            refresh_token=initial_pair.refresh_token,
         )
 
         assert new_pair.access_token != initial_pair.access_token
@@ -167,7 +187,9 @@ class TestTokenRefresh:
 
         # First refresh should succeed
         new_pair1 = auth_service.refresh_access_token_from_refresh(
-            session=db_session, user_id=test_user.id, refresh_token=refresh_token
+            session=db_session,
+            user_id=_persisted_user_id(test_user),
+            refresh_token=refresh_token,
         )
         assert new_pair1 is not None
 
@@ -175,7 +197,7 @@ class TestTokenRefresh:
         with pytest.raises(ValueError, match="Invalid or expired refresh token"):
             auth_service.refresh_access_token_from_refresh(
                 session=db_session,
-                user_id=test_user.id,
+                user_id=_persisted_user_id(test_user),
                 refresh_token=refresh_token,  # Same token, already revoked
             )
 
@@ -185,7 +207,9 @@ class TestTokenRefresh:
 
         # Refresh the token
         auth_service.refresh_access_token_from_refresh(
-            session=db_session, user_id=test_user.id, refresh_token=initial_pair.refresh_token
+            session=db_session,
+            user_id=_persisted_user_id(test_user),
+            refresh_token=initial_pair.refresh_token,
         )
 
         # Old token should be revoked in database
@@ -195,7 +219,7 @@ class TestTokenRefresh:
         from sqlmodel import and_
 
         statement = select(RefreshToken).where(
-            and_(RefreshToken.hashed_token == hashed_old, RefreshToken.revoked is True)
+            and_(RefreshToken.hashed_token == hashed_old, col(RefreshToken.revoked).is_(True))
         )
         old_token = db_session.exec(statement).first()
         assert old_token is not None
@@ -205,7 +229,9 @@ class TestTokenRefresh:
         """Invalid refresh token should fail gracefully."""
         with pytest.raises(ValueError, match="Invalid or expired refresh token"):
             auth_service.refresh_access_token_from_refresh(
-                session=db_session, user_id=test_user.id, refresh_token="invalid_token_xyz"
+                session=db_session,
+                user_id=_persisted_user_id(test_user),
+                refresh_token="invalid_token_xyz",
             )
 
     def test_refresh_expired_token_fails(self, db_session: Session, test_user: User):
@@ -215,7 +241,7 @@ class TestTokenRefresh:
 
         raw_token = security.generate_refresh_token()
         expired_token = RefreshToken(
-            user_id=test_user.id,
+            user_id=_persisted_user_id(test_user),
             hashed_token=hash_refresh_token(raw_token),
             expires_at=datetime.now(UTC) - timedelta(days=1),
             revoked=False,
@@ -226,7 +252,9 @@ class TestTokenRefresh:
         # Should fail because token is expired
         with pytest.raises(ValueError, match="Invalid or expired refresh token"):
             auth_service.refresh_access_token_from_refresh(
-                session=db_session, user_id=test_user.id, refresh_token=raw_token
+                session=db_session,
+                user_id=_persisted_user_id(test_user),
+                refresh_token=raw_token,
             )
 
 
@@ -238,7 +266,9 @@ class TestTokenRevocation:
         token_pair = auth_service.create_token_pair(session=db_session, user=test_user)
 
         decoded = jwt.decode(
-            token_pair.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
         jti = decoded["jti"]
         exp = decoded["exp"]
@@ -255,7 +285,9 @@ class TestTokenRevocation:
         token_pair = auth_service.create_token_pair(session=db_session, user=test_user)
 
         decoded = jwt.decode(
-            token_pair.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
         jti = decoded["jti"]
 
@@ -278,13 +310,18 @@ class TestTokenRevocation:
         auth_service.create_token_pair(session=db_session, user=test_user)
 
         # Revoke all user tokens
-        auth_service.revoke_all_user_tokens(session=db_session, user_id=test_user.id)
+        auth_service.revoke_all_user_tokens(
+            session=db_session, user_id=_persisted_user_id(test_user)
+        )
 
         # All refresh tokens should be revoked
         from sqlmodel import and_
 
         statement = select(RefreshToken).where(
-            and_(RefreshToken.user_id == test_user.id, RefreshToken.revoked is True)
+            and_(
+                RefreshToken.user_id == test_user.id,
+                col(RefreshToken.revoked).is_(True),
+            )
         )
         revoked_tokens = db_session.exec(statement).all()
         assert len(revoked_tokens) >= 2
@@ -298,7 +335,9 @@ class TestTokenExpiration:
         token_pair = auth_service.create_token_pair(session=db_session, user=test_user)
 
         decoded = jwt.decode(
-            token_pair.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
 
         exp_datetime = datetime.fromtimestamp(decoded["exp"], tz=UTC)
@@ -315,8 +354,10 @@ class TestTokenExpiration:
         hashed = security.hash_refresh_token(token_pair.refresh_token)
         db_token = crud.get_refresh_token_by_hash(session=db_session, hashed_token=hashed)
 
+        assert db_token is not None
         now = datetime.now(UTC)
-        ttl_seconds = (db_token.expires_at - now).total_seconds()
+        expires_at = db_token.expires_at.replace(tzinfo=UTC)
+        ttl_seconds = (expires_at - now).total_seconds()
 
         # Should be 7 days (604800 seconds), allow 5 min drift
         expected = 7 * 24 * 60 * 60
@@ -326,7 +367,7 @@ class TestTokenExpiration:
         """Cleanup function should remove expired tokens."""
         # Create tokens with past expiration dates
         old_token = RefreshToken(
-            user_id=test_user.id,
+            user_id=_persisted_user_id(test_user),
             hashed_token=security.hash_refresh_token("old_token"),
             expires_at=datetime.now(UTC) - timedelta(days=1),
             revoked=True,
@@ -363,7 +404,9 @@ class TestTokenValidation:
         token_pair = auth_service.create_token_pair(session=db_session, user=test_user)
 
         decoded = jwt.decode(
-            token_pair.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
 
         # Should not be blacklisted
@@ -375,7 +418,10 @@ class TestTokenValidation:
         # Create a token with wrong secret
         wrong_secret = "wrong_secret_key"
         fake_token = jwt.encode(
-            {"sub": str(test_user.id), "exp": datetime.now(UTC) + timedelta(minutes=30)},
+            {
+                "sub": str(test_user.id),
+                "exp": datetime.now(UTC) + timedelta(minutes=30),
+            },
             wrong_secret,
             algorithm=security.ALGORITHM,
         )
@@ -409,7 +455,9 @@ class TestTokenIntegration:
         # 1. Login creates token pair
         token_pair1 = auth_service.create_token_pair(session=db_session, user=test_user)
         decoded1 = jwt.decode(
-            token_pair1.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair1.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
         jti1 = decoded1["jti"]
 
@@ -418,10 +466,14 @@ class TestTokenIntegration:
 
         # 3. Refresh token to get new pair
         token_pair2 = auth_service.refresh_access_token_from_refresh(
-            session=db_session, user_id=test_user.id, refresh_token=token_pair1.refresh_token
+            session=db_session,
+            user_id=_persisted_user_id(test_user),
+            refresh_token=token_pair1.refresh_token,
         )
         decoded2 = jwt.decode(
-            token_pair2.access_token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+            token_pair2.access_token,
+            settings.SECRET_KEY,
+            algorithms=[security.ALGORITHM],
         )
         jti2 = decoded2["jti"]
 
@@ -431,7 +483,9 @@ class TestTokenIntegration:
         # 4. Logout revokes all tokens
         expires_at = datetime.fromtimestamp(decoded2["exp"], tz=UTC)
         auth_service.revoke_access_token(session=db_session, jti=jti2, expires_at=expires_at)
-        auth_service.revoke_all_user_tokens(session=db_session, user_id=test_user.id)
+        auth_service.revoke_all_user_tokens(
+            session=db_session, user_id=_persisted_user_id(test_user)
+        )
 
         # New token should be blacklisted after logout
         assert auth_service.is_access_token_blacklisted(session=db_session, jti=jti2)
@@ -443,7 +497,9 @@ class TestTokenIntegration:
 
         # First use succeeds
         new_pair1 = auth_service.refresh_access_token_from_refresh(
-            session=db_session, user_id=test_user.id, refresh_token=refresh_token
+            session=db_session,
+            user_id=_persisted_user_id(test_user),
+            refresh_token=refresh_token,
         )
         assert new_pair1 is not None
 
@@ -451,7 +507,7 @@ class TestTokenIntegration:
         with pytest.raises(ValueError):
             auth_service.refresh_access_token_from_refresh(
                 session=db_session,
-                user_id=test_user.id,
+                user_id=_persisted_user_id(test_user),
                 refresh_token=refresh_token,  # Same token - should fail
             )
 

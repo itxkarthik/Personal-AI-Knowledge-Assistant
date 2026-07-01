@@ -1,11 +1,12 @@
 from datetime import UTC, datetime
-from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from enum import StrEnum
+from typing import TYPE_CHECKING, ClassVar, Optional
 
-from app.utils.sanitization import sanitize_plain_text
 from pydantic import field_validator
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import CheckConstraint, Column, Field, Index, Relationship, SQLModel, desc
+
+from app.utils.sanitization import sanitize_plain_text
 
 from .chat import TimestampMixin
 
@@ -59,9 +60,22 @@ class UserRegister(SQLModel):
 
 
 # Update API properties | Optional
-class UserUpdate(UserBase):
+class UserUpdate(SQLModel):
     email: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+    is_superuser: bool | None = None
+    full_name: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=128)
+
+    @field_validator("full_name", mode="before")
+    @classmethod
+    def sanitize_full_name(cls, value: str | None) -> str | None:
+        return sanitize_plain_text(value) if value is not None else None
+
+    @field_validator("email", mode="before")
+    @classmethod
+    def sanitize_email(cls, value: str | None) -> str | None:
+        return sanitize_plain_text(value) if value is not None else None
 
 
 class UserUpdateMe(SQLModel):
@@ -90,7 +104,7 @@ class UpdatePassword(SQLModel):
 
 # Table User
 class User(TimestampMixin, UserBase, SQLModel, table=True):
-    __tablename__ = "users"
+    __tablename__: ClassVar[str] = "users"  # pyright: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (
         Index("ix_user_email", "email", unique=True),
         Index("ix_users_created_at", "created_at"),
@@ -131,18 +145,18 @@ class UsersPublic(SQLModel):
     count: int
 
 
-class UserTheme(str, Enum):
+class UserTheme(StrEnum):
     light = "light"
     dark = "dark"
     auto = "auto"
 
 
-class NotesViewMode(str, Enum):
+class NotesViewMode(StrEnum):
     grid = "grid"
     list = "list"
 
 
-class LlmProvider(str, Enum):
+class LlmProvider(StrEnum):
     openai = "openai"
     anthropic = "anthropic"
     ollama = "ollama"
@@ -152,7 +166,7 @@ class LlmProvider(str, Enum):
 
 
 class UserSettings(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "user_settings"
+    __tablename__: ClassVar[str] = "user_settings"  # pyright: ignore
     __table_args__ = (
         CheckConstraint("chunk_size >= 100 AND chunk_size <= 4000", name="chk_chunk_size"),
         CheckConstraint("chunk_overlap >= 0 AND chunk_overlap <= 1000", name="chk_chunk_overlap"),
@@ -189,13 +203,13 @@ class UserSettings(TimestampMixin, SQLModel, table=True):
     )
 
 
-class EntityType(str, Enum):
+class EntityType(StrEnum):
     note = "note"
     document = "document"
     chat = "chat"
 
 
-class ActivityAction(str, Enum):
+class ActivityAction(StrEnum):
     created = "created"
     updated = "updated"
     deleted = "deleted"
@@ -204,7 +218,7 @@ class ActivityAction(str, Enum):
 
 
 class ActivityLogs(SQLModel, table=True):
-    __tablename__ = "activitylogs"
+    __tablename__: ClassVar[str] = "activitylogs"  # pyright: ignore
     __table_args__ = (
         Index("ix_activity_logs_user_created", "user_id", desc("created_at")),
         Index("ix_activity_logs_entity", "entity_type", "entity_id"),
@@ -225,7 +239,7 @@ class ActivityLogs(SQLModel, table=True):
 
 
 class RefreshToken(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "refresh_tokens"
+    __tablename__: ClassVar[str] = "refresh_tokens"  # pyright: ignore
     __table_args__ = (
         Index("ix_refresh_tokens_user_id", "user_id"),
         Index("ix_refresh_tokens_hashed_token", "hashed_token", unique=True),
@@ -241,7 +255,7 @@ class RefreshToken(TimestampMixin, SQLModel, table=True):
 
 
 class TokenBlacklist(SQLModel, table=True):
-    __tablename__ = "token_blacklist"
+    __tablename__: ClassVar[str] = "token_blacklist"  # pyright: ignore
     __table_args__ = (
         Index("ix_token_blacklist_jti", "jti", unique=True),
         Index("ix_token_blacklist_expires_at", "expires_at"),

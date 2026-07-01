@@ -1,10 +1,12 @@
 from typing import Any
 
+from fastapi import APIRouter, Query
+
 from app.api.deps import CurrentUser, SessionDep
 from app.models.note import Notes
 from app.models.user import Message
 from app.schemas.error import StandardErrorResponse
-from app.schemas.graph import GraphAllResponse, GraphResponse
+from app.schemas.graph import GraphAllResponse, GraphNodeResponse, GraphResponse, NoteLinkResponse
 from app.schemas.note import (
     FolderCreate,
     FolderResponse,
@@ -31,15 +33,14 @@ from app.services.note_service import (
     soft_delete_note,
     update_note,
 )
-from fastapi import APIRouter, Query
 
 router = APIRouter(prefix="/notes", tags=["notes"])
 
 
 def _to_note_response(note: Notes) -> NoteResponse:
     return NoteResponse(
-        id=note.id,
-        user_id=note.user_id,
+        id=_require_id(note.id, "Note"),
+        user_id=_require_id(note.user_id, "User"),
         folder_id=note.folder_id,
         title=note.title,
         content=note.content,
@@ -47,7 +48,9 @@ def _to_note_response(note: Notes) -> NoteResponse:
         summary=note.summary,
         keywords=note.keywords or [],
         tag_ids=[tag.id for tag in note.tags],
-        linked_note_ids=[link.target_note_id for link in note.source_links],
+        linked_note_ids=[
+            _require_id(link.target_note_id, "Linked note") for link in note.source_links
+        ],
         version=note.version,
         is_favorite=note.is_favorite,
         is_archived=note.is_archived,
@@ -58,6 +61,12 @@ def _to_note_response(note: Notes) -> NoteResponse:
         created_at=note.created_at,
         updated_at=note.updated_at,
     )
+
+
+def _require_id(value: int | None, entity_name: str) -> int:
+    if value is None:
+        raise RuntimeError(f"{entity_name} must be persisted before serialization")
+    return value
 
 
 @router.post(
@@ -81,7 +90,10 @@ def create_note_endpoint(
     path="",
     response_model=NoteList,
     responses={
-        400: {"model": StandardErrorResponse, "description": "Invalid query parameters"},
+        400: {
+            "model": StandardErrorResponse,
+            "description": "Invalid query parameters",
+        },
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
@@ -249,33 +261,8 @@ def get_note_graph_endpoint(*, session: SessionDep, current_user: CurrentUser, n
     """
     nodes, edges = get_note_graph(session=session, current_user=current_user, note_id=note_id)
 
-    node_responses = [
-        {
-            "id": node.id,
-            "title": node.title,
-            "content_preview": node.content_preview,
-            "is_favorite": node.is_favorite,
-            "is_archived": node.is_archived,
-            "is_pinned": node.is_pinned,
-            "color": node.color,
-            "emoji": node.emoji,
-            "created_at": node.created_at,
-            "updated_at": node.updated_at,
-        }
-        for node in nodes
-    ]
-
-    edge_responses = [
-        {
-            "id": edge.id,
-            "source_note_id": edge.source_note_id,
-            "target_note_id": edge.target_note_id,
-            "link_type": edge.link_type,
-            "description": edge.description,
-            "created_at": edge.created_at,
-        }
-        for edge in edges
-    ]
+    node_responses = [GraphNodeResponse.model_validate(node) for node in nodes]
+    edge_responses = [NoteLinkResponse.model_validate(edge) for edge in edges]
 
     return GraphResponse(nodes=node_responses, edges=edge_responses, center_node_id=note_id)
 
@@ -303,33 +290,8 @@ def get_full_graph_endpoint(
         session=session, current_user=current_user, limit=limit, offset=offset
     )
 
-    node_responses = [
-        {
-            "id": node.id,
-            "title": node.title,
-            "content_preview": node.content_preview,
-            "is_favorite": node.is_favorite,
-            "is_archived": node.is_archived,
-            "is_pinned": node.is_pinned,
-            "color": node.color,
-            "emoji": node.emoji,
-            "created_at": node.created_at,
-            "updated_at": node.updated_at,
-        }
-        for node in nodes
-    ]
-
-    edge_responses = [
-        {
-            "id": edge.id,
-            "source_note_id": edge.source_note_id,
-            "target_note_id": edge.target_note_id,
-            "link_type": edge.link_type,
-            "description": edge.description,
-            "created_at": edge.created_at,
-        }
-        for edge in edges
-    ]
+    node_responses = [GraphNodeResponse.model_validate(node) for node in nodes]
+    edge_responses = [NoteLinkResponse.model_validate(edge) for edge in edges]
 
     has_more = len(nodes) == limit
     return GraphAllResponse(nodes=node_responses, edges=edge_responses, has_more=has_more)

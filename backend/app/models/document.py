@@ -1,6 +1,6 @@
 from datetime import datetime
-from enum import Enum
-from typing import TYPE_CHECKING
+from enum import StrEnum
+from typing import TYPE_CHECKING, ClassVar
 
 from sqlalchemy import ARRAY, String, text
 from sqlmodel import Column, Field, Index, Relationship, SQLModel, UniqueConstraint
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .user import User
 
 
-class DocumentStatus(str, Enum):
+class DocumentStatus(StrEnum):
     processing = "processing"
     completed = "completed"
     failed = "failed"
@@ -20,7 +20,7 @@ class DocumentStatus(str, Enum):
 
 
 class Document(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "documents"
+    __tablename__: ClassVar[str] = "documents"  # pyright: ignore
     __table_args__ = (
         Index("ix_document_user_created", "user_id", "created_at"),
         Index("ix_documents_user_status", "user_id", "status"),
@@ -78,7 +78,7 @@ class Document(TimestampMixin, SQLModel, table=True):
 
 
 class DocumentChunks(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "document_chunks"
+    __tablename__: ClassVar[str] = "document_chunks"  # pyright: ignore
     __table_args__ = (
         Index(
             "ix_document_chunks_content_search",

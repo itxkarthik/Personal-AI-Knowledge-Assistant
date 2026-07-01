@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
-from enum import Enum
-from typing import TYPE_CHECKING, Optional
+from enum import StrEnum
+from typing import TYPE_CHECKING, ClassVar, Optional
 
 from sqlalchemy import ARRAY, String, desc
 from sqlmodel import (
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 
 class NoteFolders(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "note_folders"
+    __tablename__: ClassVar[str] = "note_folders"  # pyright: ignore
     __table_args__ = (
         UniqueConstraint(
             "user_id",
@@ -58,14 +58,15 @@ class NoteFolders(TimestampMixin, SQLModel, table=True):
     )
 
     subfolders: list["NoteFolders"] = Relationship(
-        back_populates="parent_folder", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+        back_populates="parent_folder",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
     notes: list["Notes"] = Relationship(back_populates="folder")
     user_settings: list["UserSettings"] = Relationship(back_populates="default_folder")
 
 
 class NoteTagRelations(SQLModel, table=True):
-    __tablename__ = "note_tag_relations"
+    __tablename__: ClassVar[str] = "note_tag_relations"  # pyright: ignore
     __table_args__ = (PrimaryKeyConstraint("note_id", "tag_id"),)
     note_id: int = Field(foreign_key="notes.id", primary_key=True, index=True)
     tag_id: int = Field(foreign_key="note_tags.id", primary_key=True, index=True)
@@ -73,7 +74,7 @@ class NoteTagRelations(SQLModel, table=True):
 
 
 class Notes(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "notes"
+    __tablename__: ClassVar[str] = "notes"  # pyright: ignore[reportIncompatibleVariableOverride]
     __table_args__ = (
         Index(
             "ix_notes_favorite",
@@ -185,7 +186,7 @@ class Notes(TimestampMixin, SQLModel, table=True):
 
 
 class NoteTags(SQLModel, table=True):
-    __tablename__ = "note_tags"
+    __tablename__: ClassVar[str] = "note_tags"  # pyright: ignore
     __table_args__ = (
         Index("ix_note_tags_user_name", "user_id", "name", unique=True),
         UniqueConstraint("user_id", "name", name="uix_note_tags_user_name"),
@@ -202,7 +203,7 @@ class NoteTags(SQLModel, table=True):
     notes: list["Notes"] = Relationship(back_populates="tags", link_model=NoteTagRelations)
 
 
-class NoteCategory(str, Enum):
+class NoteCategory(StrEnum):
     personal = "personal"
     meeting = "meeting"
     work = "work"
@@ -212,7 +213,7 @@ class NoteCategory(str, Enum):
 
 
 class NoteTemplates(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "note_templates"
+    __tablename__: ClassVar[str] = "note_templates"  # pyright: ignore
     id: int | None = Field(primary_key=True, default=None)
     user_id: int | None = Field(default=None, foreign_key="users.id")
     name: str = Field(nullable=False, max_length=255)
@@ -228,7 +229,7 @@ class NoteTemplates(TimestampMixin, SQLModel, table=True):
     user: Optional["User"] = Relationship(back_populates="templates")
 
 
-class NoteCollaboratorsPermission(str, Enum):
+class NoteCollaboratorsPermission(StrEnum):
     view = "view"
     edit = "edit"
     admin = "admin"
@@ -236,7 +237,7 @@ class NoteCollaboratorsPermission(str, Enum):
 
 
 class NoteCollaborators(SQLModel, table=True):
-    __tablename__ = "note_collaborators"
+    __tablename__: ClassVar[str] = "note_collaborators"  # pyright: ignore
     __table_args__ = (UniqueConstraint("note_id", "user_id", name="unique_note_collaborators"),)
     id: int | None = Field(primary_key=True, default=None)
     note_id: int | None = Field(foreign_key="notes.id", nullable=False)
@@ -250,7 +251,7 @@ class NoteCollaborators(SQLModel, table=True):
     user: "User" = Relationship(back_populates="note_collaborations")
 
 
-class NoteLinkType(str, Enum):
+class NoteLinkType(StrEnum):
     related = "related"
     referenced = "referenced"
     parent = "parent"
@@ -258,7 +259,7 @@ class NoteLinkType(str, Enum):
 
 
 class NoteLinks(SQLModel, table=True):
-    __tablename__ = "note_links"
+    __tablename__: ClassVar[str] = "note_links"  # pyright: ignore
     __table_args__ = (
         CheckConstraint("source_note_id != target_note_id", name="check_note_links"),
         UniqueConstraint("source_note_id", "target_note_id", name="unique_note_links"),

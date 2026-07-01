@@ -1,10 +1,10 @@
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class ErrorCode(str, Enum):
+class ErrorCode(StrEnum):
     """Standardized error codes for API responses."""
 
     # Client errors (4xx)
@@ -34,24 +34,15 @@ class ErrorDetail(BaseModel):
 
     code: str = Field(..., description="Machine-readable error code")
     message: str = Field(..., description="Human-readable error message")
-    field: Optional[str] = Field(None, description="Field name if validation error")
-    value: Optional[Any] = Field(None, description="Invalid value that caused error")
+    field: str | None = Field(default=None, description="Field name if validation error")
+    value: Any | None = Field(default=None, description="Invalid value that caused error")
 
 
 class StandardErrorResponse(BaseModel):
     """Standardized error response schema."""
 
-    status: str = Field("error", description="Response status")
-    error: str = Field(..., description="Error code")
-    message: str = Field(..., description="User-friendly error message")
-    request_id: Optional[str] = Field(None, description="Unique request ID for tracking")
-    details: Optional[list[ErrorDetail]] = Field(
-        None,
-        description="Detailed error information (e.g., validation errors)",
-    )
-
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "status": "error",
                 "error": "validation_error",
@@ -67,3 +58,13 @@ class StandardErrorResponse(BaseModel):
                 ],
             }
         }
+    )
+
+    status: str = Field(default="error", description="Response status")
+    error: str = Field(..., description="Error code")
+    message: str = Field(..., description="User-friendly error message")
+    request_id: str | None = Field(default=None, description="Unique request ID for tracking")
+    details: list[ErrorDetail] | None = Field(
+        default=None,
+        description="Detailed error information (e.g., validation errors)",
+    )

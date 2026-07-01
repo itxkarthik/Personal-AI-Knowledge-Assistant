@@ -1,6 +1,9 @@
 from typing import Any
 
 import httpx
+from fastapi import APIRouter, Depends, HTTPException
+from sqlmodel import col, func, select
+
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core.config import settings
@@ -20,8 +23,6 @@ from app.models.user import (
 )
 from app.schemas.error import StandardErrorResponse
 from app.schemas.settings import OllamaModelOption, UserAISettingsResponse, UserAISettingsUpdate
-from fastapi import APIRouter, Depends, HTTPException
-from sqlmodel import func, select
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -32,7 +33,10 @@ router = APIRouter(prefix="/users", tags=["users"])
     response_model=UsersPublic,
     responses={
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
-        403: {"model": StandardErrorResponse, "description": "Admin privileges required"},
+        403: {
+            "model": StandardErrorResponse,
+            "description": "Admin privileges required",
+        },
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
@@ -43,10 +47,13 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
     count_statement = select(func.count()).select_from(User)
     count = session.exec(count_statement).one()
 
-    statement = select(User).order_by(User.created_at.desc()).offset(skip).limit(limit)
+    statement = select(User).order_by(col(User.created_at).desc()).offset(skip).limit(limit)
     users = session.exec(statement).all()
 
-    return UsersPublic(data=users, count=count)
+    return UsersPublic(
+        data=[UserPublic.model_validate(user) for user in users],
+        count=count,
+    )
 
 
 @router.post(
@@ -54,9 +61,15 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
     dependencies=[Depends(get_current_active_superuser)],
     response_model=UserPublic,
     responses={
-        400: {"model": StandardErrorResponse, "description": "User with this email already exists"},
+        400: {
+            "model": StandardErrorResponse,
+            "description": "User with this email already exists",
+        },
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
-        403: {"model": StandardErrorResponse, "description": "Admin privileges required"},
+        403: {
+            "model": StandardErrorResponse,
+            "description": "Admin privileges required",
+        },
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
@@ -109,7 +122,10 @@ def update_user_me(*, session: SessionDep, user_in: UserUpdateMe, current_user: 
     path="/me/password",
     response_model=Message,
     responses={
-        400: {"model": StandardErrorResponse, "description": "Invalid current password"},
+        400: {
+            "model": StandardErrorResponse,
+            "description": "Invalid current password",
+        },
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
@@ -173,7 +189,9 @@ def _parse_chat_models(payload: dict[str, Any], embedding_model: str) -> list[Ol
     return sorted(models, key=lambda model: model.name.casefold())
 
 
-async def _fetch_chat_models(embedding_model: str) -> tuple[bool, list[OllamaModelOption]]:
+async def _fetch_chat_models(
+    embedding_model: str,
+) -> tuple[bool, list[OllamaModelOption]]:
     try:
         async with httpx.AsyncClient(timeout=4.0) as client:
             response = await client.get(f"{settings.OLLAMA_BASE_URL.rstrip('/')}/api/tags")
@@ -190,6 +208,12 @@ def _resolve_user_ai_settings(session: SessionDep, user_id: int) -> UserSettings
     return UserSettings(user_id=user_id)
 
 
+def _current_user_id(current_user: User) -> int:
+    if current_user.id is None:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user")
+    return current_user.id
+
+
 @router.get(
     path="/me/ai-settings",
     response_model=UserAISettingsResponse,
@@ -198,7 +222,7 @@ def _resolve_user_ai_settings(session: SessionDep, user_id: int) -> UserSettings
 async def read_user_ai_settings(
     session: SessionDep, current_user: CurrentUser
 ) -> UserAISettingsResponse:
-    preferences = _resolve_user_ai_settings(session, current_user.id)
+    preferences = _resolve_user_ai_settings(session, _current_user_id(current_user))
     ollama_available, models = await _fetch_chat_models(preferences.embedding_model)
     return UserAISettingsResponse(
         llm_model=preferences.llm_model,
@@ -223,7 +247,7 @@ async def update_user_ai_settings(
     current_user: CurrentUser,
     body: UserAISettingsUpdate,
 ) -> UserAISettingsResponse:
-    preferences = _resolve_user_ai_settings(session, current_user.id)
+    preferences = _resolve_user_ai_settings(session, _current_user_id(current_user))
     ollama_available, models = await _fetch_chat_models(preferences.embedding_model)
     installed_names = {model.name for model in models}
     if not ollama_available:
@@ -250,7 +274,10 @@ async def update_user_ai_settings(
     response_model=Message,
     responses={
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
-        403: {"model": StandardErrorResponse, "description": "Superuser cannot delete self"},
+        403: {
+            "model": StandardErrorResponse,
+            "description": "Superuser cannot delete self",
+        },
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
@@ -272,7 +299,10 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     path="/signup",
     response_model=UserPublic,
     responses={
-        400: {"model": StandardErrorResponse, "description": "User with this email already exists"},
+        400: {
+            "model": StandardErrorResponse,
+            "description": "User with this email already exists",
+        },
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
@@ -327,7 +357,10 @@ def read_user_by_id(user_id: int, session: SessionDep, current_user: CurrentUser
     response_model=UserPublic,
     responses={
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
-        403: {"model": StandardErrorResponse, "description": "Admin privileges required"},
+        403: {
+            "model": StandardErrorResponse,
+            "description": "Admin privileges required",
+        },
         404: {"model": StandardErrorResponse, "description": "User not found"},
         409: {"model": StandardErrorResponse, "description": "Email already in use"},
         500: {"model": StandardErrorResponse, "description": "Internal server error"},

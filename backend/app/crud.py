@@ -1,9 +1,10 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlmodel import Session, col, select
+
 from app.core.security import get_password_hash, hash_refresh_token, verify_password
 from app.models.user import RefreshToken, TokenBlacklist, User, UserCreate, UserUpdate
-from sqlmodel import Session, select
 
 
 def create_user(*, session: Session, user_create: UserCreate) -> User:
@@ -74,7 +75,7 @@ def create_refresh_token(
 def get_refresh_token_by_hash(*, session: Session, hashed_token: str) -> RefreshToken | None:
     statement = select(RefreshToken).where(
         RefreshToken.hashed_token == hashed_token,
-        RefreshToken.revoked is False,
+        col(RefreshToken.revoked).is_(False),
         RefreshToken.expires_at > datetime.now(UTC),
     )
     return session.exec(statement).first()
@@ -88,7 +89,7 @@ def revoke_refresh_token(*, session: Session, db_token: RefreshToken) -> None:
 
 def revoke_all_user_refresh_tokens(*, session: Session, user_id: int) -> None:
     statement = select(RefreshToken).where(
-        RefreshToken.user_id == user_id, RefreshToken.revoked is False
+        RefreshToken.user_id == user_id, col(RefreshToken.revoked).is_(False)
     )
     tokens = session.exec(statement).all()
     for token in tokens:

@@ -1,9 +1,10 @@
 import logging
 
-from app.schemas.error import ErrorCode, ErrorDetail, StandardErrorResponse
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.schemas.error import ErrorCode, ErrorDetail, StandardErrorResponse
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,7 @@ class ValidationError(AppError):
         super().__init__(
             message=message,
             error_code=ErrorCode.VALIDATION_ERROR,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             details=details,
         )
 
@@ -163,6 +164,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             error=ErrorCode.DATABASE_ERROR.value,
             message="Database operation failed",
             request_id=request_id,
+            details=None,
         )
 
         logger.error(
@@ -182,6 +184,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         error=ErrorCode.INTERNAL_SERVER_ERROR.value,
         message="An unexpected error occurred. Please try again later.",
         request_id=request_id,
+        details=None,
     )
 
     logger.error(

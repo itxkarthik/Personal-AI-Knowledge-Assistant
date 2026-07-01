@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
-from enum import Enum
-from typing import TYPE_CHECKING
+from enum import StrEnum
+from typing import TYPE_CHECKING, ClassVar
 
 from pydantic import ConfigDict
 from sqlalchemy import desc
@@ -21,7 +21,7 @@ class TimestampMixin(SQLModel):
 
 
 class ChatSession(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "chat_sessions"
+    __tablename__: ClassVar[str] = "chat_sessions"  # pyright: ignore
     __table_args__ = (
         Index("ix_chat_session_user_last_message", "user_id", desc("last_message_at")),
     )
@@ -48,16 +48,16 @@ class ChatSession(TimestampMixin, SQLModel, table=True):
     )
 
 
-class ChatRole(str, Enum):
+class ChatRole(StrEnum):
     user = "user"
     assistant = "assistant"
     system = "system"
 
 
 class ChatMessages(TimestampMixin, SQLModel, table=True):
-    __tablename__ = "chat_messages"
+    __tablename__: ClassVar[str] = "chat_messages"  # pyright: ignore
     __table_args__ = (Index("ix_chat_messages_session_created", "session_id", desc("created_at")),)
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=())  # pyright: ignore[reportAssignmentType]
     id: int | None = Field(default=None, primary_key=True)
     session_id: int | None = Field(foreign_key="chat_sessions.id", nullable=False)
     role: ChatRole = Field(nullable=False, max_length=20)

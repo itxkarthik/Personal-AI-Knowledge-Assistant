@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from fastapi import HTTPException
+from sqlalchemy import func
+from sqlalchemy.orm import joinedload
+from sqlmodel import Session, col, or_, select
+
 from app.models.document import Document
-from app.models.note import NoteFolders, NoteLinks, NoteLinkType, Notes, NoteTags
+from app.models.note import NoteFolders, NoteLinks, NoteLinkType, Notes, NoteTagRelations, NoteTags
 from app.models.user import User
 from app.schemas.note import FolderCreate, NoteCreate, NoteUpdate, TagCreate
 from app.utils.sanitization import strip_all_html
@@ -13,16 +18,13 @@ from app.utils.text_processing import (
     markdown_to_plain_text,
     normalize_markdown,
 )
-from fastapi import HTTPException
-from sqlalchemy import func
-from sqlalchemy.orm import joinedload
-from sqlmodel import Session, col, or_, select
 
 
 def create_note(*, session: Session, current_user: User, payload: NoteCreate) -> Notes:
-    _validate_folder_access(session=session, user_id=current_user.id, folder_id=payload.folder_id)
+    user_id = _require_persisted_id(current_user.id, "User")
+    _validate_folder_access(session=session, user_id=user_id, folder_id=payload.folder_id)
     _validate_document_access(
-        session=session, user_id=current_user.id, document_id=payload.linked_document_id
+        session=session, user_id=user_id, document_id=payload.linked_document_id
     )
 
     clean_content = (
@@ -34,7 +36,7 @@ def create_note(*, session: Session, current_user: User, payload: NoteCreate) ->
         else markdown_to_plain_text(clean_content)
     )
     note = Notes(
-        user_id=current_user.id,
+        user_id=user_id,
         folder_id=payload.folder_id,
         title=payload.title,
         content=clean_content,
@@ -47,17 +49,18 @@ def create_note(*, session: Session, current_user: User, payload: NoteCreate) ->
         linked_chat_session_id=payload.linked_chat_session_id,
         word_count=len(preview_source.split()),
         char_count=len(preview_source),
-        read_time_minutes=max(1, len(preview_source.split()) // 200) if preview_source else 1,
+        read_time_minutes=(max(1, len(preview_source.split()) // 200) if preview_source else 1),
     )
     session.add(note)
     session.commit()
     session.refresh(note)
+    note_id = _require_persisted_id(note.id, "Note")
 
     if payload.tag_ids:
         assign_tags_to_note(
             session=session,
             current_user=current_user,
-            note_id=note.id,
+            note_id=note_id,
             tag_ids=payload.tag_ids,
         )
 
@@ -65,18 +68,18 @@ def create_note(*, session: Session, current_user: User, payload: NoteCreate) ->
         link_notes(
             session=session,
             current_user=current_user,
-            source_note_id=note.id,
+            source_note_id=note_id,
             target_note_ids=payload.linked_note_ids,
         )
 
     sync_wiki_links(
         session=session,
         current_user=current_user,
-        source_note_id=note.id,
+        source_note_id=note_id,
         content=clean_content,
     )
 
-    return get_note_by_id(session=session, current_user=current_user, note_id=note.id)
+    return get_note_by_id(session=session, current_user=current_user, note_id=note_id)
 
 
 def list_notes(
@@ -98,10 +101,14 @@ def list_notes(
     - Applies LIMIT/OFFSET at database level for pagination
     """
     # Build base statement with filters
-    base_where = [Notes.user_id == current_user.id, Notes.is_deleted.is_not(True)]
+    base_where = [Notes.user_id == current_user.id, col(Notes.is_deleted).is_not(True)]
 
     if folder_id is not None:
         base_where.append(Notes.folder_id == folder_id)
+
+    if tag_id is not None:
+        tagged_note_ids = select(NoteTagRelations.note_id).where(NoteTagRelations.tag_id == tag_id)
+        base_where.append(col(Notes.id).in_(tagged_note_ids))
 
     if search:
         like_query = f"%{search}%"
@@ -118,23 +125,13 @@ def list_notes(
 
     # For fetching data: include eager loading and pagination
     statement = select(Notes).where(*base_where)
-    statement = statement.options(joinedload(Notes.tags))
+    statement = statement.options(joinedload(Notes.tags))  # pyright: ignore[reportArgumentType]
     statement = statement.order_by(col(Notes.updated_at).desc())
     statement = statement.limit(limit).offset(skip)
 
     notes = session.exec(statement).unique().all()
 
-    # Filter by tag_id in Python if specified (unavoidable - complex filtering logic)
-    if tag_id is not None:
-        notes = [note for note in notes if any(tag.id == tag_id for tag in note.tags)]
-        # Adjust count if tag filtering removed results
-        # Note: This count won't be exact if tag_id filters results,
-        # but accurate filtering would require JOIN which complicates pagination
-        # This trade-off keeps pagination simple while maintaining correctness for most cases
-        if len(notes) == 0 and skip == 0:
-            total_count = 0
-
-    return notes, total_count
+    return list(notes), total_count
 
 
 def list_folders(*, session: Session, current_user: User) -> list[NoteFolders]:
@@ -142,11 +139,11 @@ def list_folders(*, session: Session, current_user: User) -> list[NoteFolders]:
         select(NoteFolders)
         .where(
             NoteFolders.user_id == current_user.id,
-            NoteFolders.is_deleted.is_not(True),
+            col(NoteFolders.is_deleted).is_not(True),
         )
         .order_by(col(NoteFolders.sort_order).asc(), col(NoteFolders.name).asc())
     )
-    return session.exec(statement).all()
+    return list(session.exec(statement).all())
 
 
 def list_tags(*, session: Session, current_user: User) -> list[NoteTags]:
@@ -155,7 +152,7 @@ def list_tags(*, session: Session, current_user: User) -> list[NoteTags]:
         .where(NoteTags.user_id == current_user.id)
         .order_by(col(NoteTags.name).asc())
     )
-    return session.exec(statement).all()
+    return list(session.exec(statement).all())
 
 
 def get_note_by_id(*, session: Session, current_user: User, note_id: int) -> Notes:
@@ -165,9 +162,9 @@ def get_note_by_id(*, session: Session, current_user: User, note_id: int) -> Not
             .where(
                 Notes.id == note_id,
                 Notes.user_id == current_user.id,
-                Notes.is_deleted.is_not(True),
+                col(Notes.is_deleted).is_not(True),
             )
-            .options(joinedload(Notes.tags))
+            .options(joinedload(Notes.tags))  # pyright: ignore[reportArgumentType]
         )
         .unique()
         .first()
@@ -180,17 +177,18 @@ def get_note_by_id(*, session: Session, current_user: User, note_id: int) -> Not
 def update_note(
     *, session: Session, current_user: User, note_id: int, payload: NoteUpdate
 ) -> Notes:
+    user_id = _require_persisted_id(current_user.id, "User")
     note = get_note_by_id(session=session, current_user=current_user, note_id=note_id)
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         return note
 
     _validate_folder_access(
-        session=session, user_id=current_user.id, folder_id=update_data.get("folder_id")
+        session=session, user_id=user_id, folder_id=update_data.get("folder_id")
     )
     _validate_document_access(
         session=session,
-        user_id=current_user.id,
+        user_id=user_id,
         document_id=update_data.get("linked_document_id"),
     )
 
@@ -224,12 +222,13 @@ def update_note(
     session.add(note)
     session.commit()
     session.refresh(note)
+    persisted_note_id = _require_persisted_id(note.id, "Note")
 
     if payload.tag_ids is not None:
         assign_tags_to_note(
             session=session,
             current_user=current_user,
-            note_id=note.id,
+            note_id=persisted_note_id,
             tag_ids=payload.tag_ids,
         )
 
@@ -237,7 +236,7 @@ def update_note(
         sync_note_links(
             session=session,
             current_user=current_user,
-            source_note_id=note.id,
+            source_note_id=persisted_note_id,
             target_note_ids=payload.linked_note_ids,
         )
 
@@ -245,11 +244,11 @@ def update_note(
         sync_wiki_links(
             session=session,
             current_user=current_user,
-            source_note_id=note.id,
+            source_note_id=persisted_note_id,
             content=note.content,
         )
 
-    return get_note_by_id(session=session, current_user=current_user, note_id=note.id)
+    return get_note_by_id(session=session, current_user=current_user, note_id=persisted_note_id)
 
 
 def soft_delete_note(*, session: Session, current_user: User, note_id: int) -> None:
@@ -261,11 +260,10 @@ def soft_delete_note(*, session: Session, current_user: User, note_id: int) -> N
 
 
 def create_folder(*, session: Session, current_user: User, payload: FolderCreate) -> NoteFolders:
-    _validate_folder_access(
-        session=session, user_id=current_user.id, folder_id=payload.parent_folder_id
-    )
+    user_id = _require_persisted_id(current_user.id, "User")
+    _validate_folder_access(session=session, user_id=user_id, folder_id=payload.parent_folder_id)
     folder = NoteFolders(
-        user_id=current_user.id,
+        user_id=user_id,
         name=payload.name,
         description=payload.description,
         parent_folder_id=payload.parent_folder_id,
@@ -284,7 +282,7 @@ def delete_folder(*, session: Session, current_user: User, folder_id: int) -> No
         select(NoteFolders).where(
             NoteFolders.id == folder_id,
             NoteFolders.user_id == current_user.id,
-            NoteFolders.is_deleted.is_not(True),
+            col(NoteFolders.is_deleted).is_not(True),
         )
     ).first()
     if not folder:
@@ -297,7 +295,8 @@ def delete_folder(*, session: Session, current_user: User, folder_id: int) -> No
 def move_note_to_folder(
     *, session: Session, current_user: User, note_id: int, folder_id: int | None
 ) -> Notes:
-    _validate_folder_access(session=session, user_id=current_user.id, folder_id=folder_id)
+    user_id = _require_persisted_id(current_user.id, "User")
+    _validate_folder_access(session=session, user_id=user_id, folder_id=folder_id)
     note = get_note_by_id(session=session, current_user=current_user, note_id=note_id)
     note.folder_id = folder_id
     session.add(note)
@@ -307,6 +306,7 @@ def move_note_to_folder(
 
 
 def create_tag(*, session: Session, current_user: User, payload: TagCreate) -> NoteTags:
+    user_id = _require_persisted_id(current_user.id, "User")
     existing = session.exec(
         select(NoteTags).where(
             NoteTags.user_id == current_user.id,
@@ -317,7 +317,7 @@ def create_tag(*, session: Session, current_user: User, payload: TagCreate) -> N
         raise HTTPException(status_code=409, detail="Tag already exists")
 
     tag = NoteTags(
-        user_id=current_user.id,
+        user_id=user_id,
         name=payload.name,
         color=payload.color,
         description=payload.description,
@@ -342,13 +342,13 @@ def assign_tags_to_note(
     tags = session.exec(
         select(NoteTags).where(
             NoteTags.user_id == current_user.id,
-            NoteTags.id.in_(tag_ids),
+            col(NoteTags.id).in_(tag_ids),
         )
     ).all()
     if len(tags) != len(set(tag_ids)):
         raise HTTPException(status_code=400, detail="One or more tags are invalid")
 
-    note.tags = tags
+    note.tags = list(tags)
     session.add(note)
     session.commit()
     session.refresh(note)
@@ -430,7 +430,7 @@ def sync_wiki_links(
     user_notes = session.exec(
         select(Notes).where(
             Notes.user_id == current_user.id,
-            Notes.is_deleted.is_not(True),
+            col(Notes.is_deleted).is_not(True),
         )
     ).all()
     target_ids = {
@@ -476,7 +476,7 @@ def rebuild_wiki_links(*, session: Session, current_user: User) -> tuple[int, in
     notes = session.exec(
         select(Notes).where(
             Notes.user_id == current_user.id,
-            Notes.is_deleted.is_not(True),
+            col(Notes.is_deleted).is_not(True),
         )
     ).all()
     added = 0
@@ -485,7 +485,7 @@ def rebuild_wiki_links(*, session: Session, current_user: User) -> tuple[int, in
         note_added, note_removed = sync_wiki_links(
             session=session,
             current_user=current_user,
-            source_note_id=note.id,
+            source_note_id=_require_persisted_id(note.id, "Note"),
             content=note.content,
         )
         added += note_added
@@ -496,7 +496,8 @@ def rebuild_wiki_links(*, session: Session, current_user: User) -> tuple[int, in
 def link_note_to_document(
     *, session: Session, current_user: User, note_id: int, document_id: int | None
 ) -> Notes:
-    _validate_document_access(session=session, user_id=current_user.id, document_id=document_id)
+    user_id = _require_persisted_id(current_user.id, "User")
+    _validate_document_access(session=session, user_id=user_id, document_id=document_id)
     note = get_note_by_id(session=session, current_user=current_user, note_id=note_id)
     note.linked_document_id = document_id
     session.add(note)
@@ -532,13 +533,13 @@ def get_note_graph(
     # Get all connected notes
     nodes = session.exec(
         select(Notes).where(
-            Notes.id.in_(connected_ids),
+            col(Notes.id).in_(connected_ids),
             Notes.user_id == current_user.id,
-            Notes.is_deleted.is_not(True),
+            col(Notes.is_deleted).is_not(True),
         )
     ).all()
 
-    return nodes, all_links
+    return list(nodes), list(all_links)
 
 
 def get_full_user_graph(
@@ -553,7 +554,7 @@ def get_full_user_graph(
         select(Notes)
         .where(
             Notes.user_id == current_user.id,
-            Notes.is_deleted.is_not(True),
+            col(Notes.is_deleted).is_not(True),
         )
         .order_by(col(Notes.updated_at).desc())
         .limit(limit)
@@ -565,12 +566,12 @@ def get_full_user_graph(
     # Get all links where both source and target are in the nodes list
     edges = session.exec(
         select(NoteLinks).where(
-            NoteLinks.source_note_id.in_(node_ids),
-            NoteLinks.target_note_id.in_(node_ids),
+            col(NoteLinks.source_note_id).in_(node_ids),
+            col(NoteLinks.target_note_id).in_(node_ids),
         )
     ).all()
 
-    return nodes, edges
+    return list(nodes), list(edges)
 
 
 def create_note_link(
@@ -584,8 +585,8 @@ def create_note_link(
 ) -> NoteLinks:
     """Create a link between two notes."""
     # Verify both notes belong to the user
-    source = get_note_by_id(session=session, current_user=current_user, note_id=source_note_id)
-    target = get_note_by_id(session=session, current_user=current_user, note_id=target_note_id)
+    get_note_by_id(session=session, current_user=current_user, note_id=source_note_id)
+    get_note_by_id(session=session, current_user=current_user, note_id=target_note_id)
 
     if source_note_id == target_note_id:
         raise HTTPException(status_code=400, detail="Cannot link a note to itself")
@@ -604,7 +605,7 @@ def create_note_link(
     link = NoteLinks(
         source_note_id=source_note_id,
         target_note_id=target_note_id,
-        link_type=link_type,
+        link_type=NoteLinkType(link_type),
         description=description,
     )
     session.add(link)
@@ -642,7 +643,7 @@ def _validate_folder_access(*, session: Session, user_id: int, folder_id: int | 
         select(NoteFolders).where(
             NoteFolders.id == folder_id,
             NoteFolders.user_id == user_id,
-            NoteFolders.is_deleted.is_not(True),
+            col(NoteFolders.is_deleted).is_not(True),
         )
     ).first()
     if not folder:
@@ -656,7 +657,7 @@ def _validate_document_access(*, session: Session, user_id: int, document_id: in
         select(Document).where(
             Document.id == document_id,
             Document.user_id == user_id,
-            Document.is_deleted.is_not(True),
+            col(Document.is_deleted).is_not(True),
         )
     ).first()
     if not document:
@@ -697,3 +698,9 @@ def _create_version_snapshot(*, session: Session, note: Notes) -> Notes:
     session.commit()
     session.refresh(snapshot)
     return snapshot
+
+
+def _require_persisted_id(value: int | None, entity_name: str) -> int:
+    if value is None:
+        raise RuntimeError(f"{entity_name} must be persisted before use")
+    return value

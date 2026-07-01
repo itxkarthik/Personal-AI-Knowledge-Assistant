@@ -3,18 +3,19 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import jwt
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.security import OAuth2PasswordRequestForm
+from pydantic import BaseModel
+
 from app import crud  # type: ignore[attr-defined]
 from app.api.deps import CurrentUser, SessionDep, TokenDep
 from app.core import security
 from app.core.config import settings
 from app.core.csrf import get_csrf_token
 from app.core.rate_limit import limiter
-from app.models.user import Message, Token, TokenPayload, UserPublic
+from app.models.user import Message, Token, TokenPayload, User, UserPublic
 from app.schemas.error import StandardErrorResponse
 from app.services import auth_service
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
-from pydantic import BaseModel
 
 router = APIRouter(tags=["login"])
 
@@ -108,7 +109,9 @@ def login_access_token(
     # Use auth_service to create token pair
     token_pair = auth_service.create_token_pair(session=session, user=user)
     _set_auth_cookies(
-        response, access_token=token_pair.access_token, refresh_token=token_pair.refresh_token
+        response,
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
     )
 
     return Token(
@@ -125,7 +128,10 @@ class RefreshRequest(BaseModel):
     path="/auth/refresh",
     responses={
         400: {"model": StandardErrorResponse, "description": "Invalid token format"},
-        401: {"model": StandardErrorResponse, "description": "Invalid or expired refresh token"},
+        401: {
+            "model": StandardErrorResponse,
+            "description": "Invalid or expired refresh token",
+        },
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
@@ -175,7 +181,9 @@ def refresh_access_token(
         raise HTTPException(status_code=400, detail="Invalid refresh token")
 
     _set_auth_cookies(
-        response, access_token=token_pair.access_token, refresh_token=token_pair.refresh_token
+        response,
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
     )
 
     return Token(
@@ -213,7 +221,9 @@ def logout(
         auth_service.revoke_access_token(session=session, jti=token_data.jti, expires_at=expires_at)
 
     # Revoke all refresh tokens for this user
-    auth_service.revoke_all_user_tokens(session=session, user_id=current_user.id)
+    auth_service.revoke_all_user_tokens(
+        session=session, user_id=_authenticated_user_id(current_user)
+    )
     _clear_auth_cookies(response)
 
     return Message(message="Successfully logged out")
@@ -320,10 +330,18 @@ def revoke_all_user_tokens_endpoint(
             Success message
     """
     # Revoke all tokens
-    auth_service.revoke_all_user_tokens(session=session, user_id=current_user.id)
+    auth_service.revoke_all_user_tokens(
+        session=session, user_id=_authenticated_user_id(current_user)
+    )
     _clear_auth_cookies(response)
 
     return Message(message="All tokens revoked successfully")
+
+
+def _authenticated_user_id(current_user: User) -> int:
+    if current_user.id is None:
+        raise HTTPException(status_code=401, detail="Invalid authenticated user")
+    return current_user.id
 
 
 @router.get(
@@ -366,7 +384,7 @@ def get_token_info_endpoint(
         expires_at=token_info["expires_at"],
         is_blacklisted=token_info["is_blacklisted"],
         is_expired=token_info["is_expired"],
-        issued_at=datetime.fromtimestamp(payload.get("iat", 0), tz=UTC)
-        if payload.get("iat")
-        else None,
+        issued_at=(
+            datetime.fromtimestamp(payload.get("iat", 0), tz=UTC) if payload.get("iat") else None
+        ),
     )

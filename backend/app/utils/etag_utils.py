@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 
@@ -17,7 +17,7 @@ def generate_etag(data: Any) -> str:
         ETag string (enclosed in quotes)
     """
     # Convert data to JSON string for hashing
-    if isinstance(data, (dict, list)):
+    if isinstance(data, dict | list):
         json_str = json.dumps(data, sort_keys=True, default=str)
     else:
         json_str = str(data)
@@ -42,7 +42,10 @@ def get_cache_duration(endpoint_type: str) -> tuple[str, int]:
     cache_policies = {
         "list": ("public, max-age=300", 300),  # 5 minutes
         "detail": ("public, max-age=300", 300),  # 5 minutes
-        "search": ("public, max-age=60", 60),  # 1 minute (search results change frequently)
+        "search": (
+            "public, max-age=60",
+            60,
+        ),  # 1 minute (search results change frequently)
         "mutable": ("no-cache, no-store, must-revalidate", 0),  # Don't cache
     }
 
@@ -72,7 +75,7 @@ def get_last_modified(data: dict) -> str:
             return dt.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
     # Default: current time
-    return datetime.utcnow().strftime("%a, %d %b %Y %H:%M:%S GMT")
+    return datetime.now(UTC).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 
 def should_cache_request(method: str, status_code: int) -> bool:

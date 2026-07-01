@@ -11,9 +11,9 @@ This module provides CSRF protection by:
 import logging
 import secrets
 
-from fastapi import HTTPException, Request, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from app.core.config import settings
 
@@ -27,9 +27,10 @@ CSRF_EXEMPT_PATHS: set[str] = {
     "/docs",
     "/redoc",
     "/openapi.json",
-    "/api/v1/auth/login",
-    "/api/v1/auth/register",
-    "/api/v1/auth/guest-login",
+    "/api/v1/login/access-token",
+    "/api/v1/users/signup",
+    "/api/v1/users/verify-email",
+    "/api/v1/users/resend-verification",
     "/api/v1/auth/logout",
     "/api/v1/auth/refresh",
 }
@@ -125,9 +126,13 @@ class CSRFMiddleware(BaseHTTPMiddleware):
 
         if not csrf_valid:
             logger.error(f"CSRF validation failed for {request.method} {request.url.path}")
-            raise HTTPException(
+            return JSONResponse(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="CSRF token validation failed",
+                content={
+                    "status": "error",
+                    "error": "authorization_error",
+                    "message": "CSRF token validation failed",
+                },
                 headers={
                     "X-CSRF-Error": "invalid_token",
                     "Pragma": "no-cache",

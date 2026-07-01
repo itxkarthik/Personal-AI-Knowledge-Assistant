@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any, NamedTuple
 
-from sqlmodel import Session
+from sqlmodel import Session, col
 
 from app import crud  # type: ignore[attr-defined]
 from app.core import security
@@ -35,14 +35,17 @@ def create_token_pair(session: Session, user: User) -> TokenPair:
     - Refresh Token: Random 64-byte urlsafe token, expires in 7 days, single-use
     """
     # Create access token with JWT exp + jti claims
+    if user.id is None:
+        raise ValueError("User must be persisted before tokens can be created")
+    user_id = user.id
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(subject=user.id, expires_delta=access_token_expires)
+    access_token = security.create_access_token(subject=user_id, expires_delta=access_token_expires)
 
     # Create refresh token (long-lived, single-use)
     raw_refresh_token = security.generate_refresh_token()
     crud.create_refresh_token(
         session=session,
-        user_id=user.id,
+        user_id=user_id,
         raw_token=raw_refresh_token,
         expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
@@ -177,12 +180,20 @@ def cleanup_expired_tokens(session: Session) -> int:
     now = datetime.now(UTC)
 
     # Delete expired refresh tokens
-    refresh_stmt = delete(RefreshToken).where(RefreshToken.expires_at < now)
+    refresh_stmt = (
+        delete(RefreshToken)
+        .where(col(RefreshToken.expires_at) < now)
+        .execution_options(synchronize_session=False)
+    )
     refresh_result = session.exec(refresh_stmt)
     refresh_deleted = refresh_result.rowcount if hasattr(refresh_result, "rowcount") else 0
 
     # Delete expired blacklisted tokens
-    blacklist_stmt = delete(TokenBlacklist).where(TokenBlacklist.expires_at < now)
+    blacklist_stmt = (
+        delete(TokenBlacklist)
+        .where(col(TokenBlacklist.expires_at) < now)
+        .execution_options(synchronize_session=False)
+    )
     blacklist_result = session.exec(blacklist_stmt)
     blacklist_deleted = blacklist_result.rowcount if hasattr(blacklist_result, "rowcount") else 0
 

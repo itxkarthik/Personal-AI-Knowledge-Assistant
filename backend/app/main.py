@@ -1,7 +1,14 @@
 import logging
 from contextlib import asynccontextmanager
+from typing import Any, cast
 
 import httpx
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
 from app.api.main import api_router
 from app.api.routes.test import router as test_router
 from app.core.cache_middleware import ETagAndCacheMiddleware
@@ -18,11 +25,6 @@ from app.core.middleware import (
 
 # Rate Limiter
 from app.core.rate_limit import limiter
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,7 @@ app = FastAPI(
 
 # Attach limiter state so slowapi can access it inside route handlers
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_exception_handler(RateLimitExceeded, cast(Any, _rate_limit_exceeded_handler))
 
 # Register global exception handler for all exceptions
 # This must be registered AFTER specific handlers (like RateLimitExceeded)

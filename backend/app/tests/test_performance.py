@@ -13,13 +13,18 @@ import pytest
 from sqlmodel import Session, select
 
 from app.ai.vectorstore import PgVectorStore
-from app.models.chat import ChatSession
+from app.models.chat import ChatRole, ChatSession
 from app.models.document import Document, DocumentChunks
 from app.models.note import Notes, NoteTags
 from app.models.user import User
 from app.services.chat_service import list_chat_sessions
 from app.services.document_service import list_documents
 from app.services.note_service import list_notes
+
+
+def _persisted_user_id(user: User) -> int:
+    assert user.id is not None
+    return user.id
 
 
 class TestNoteListingPerformance:
@@ -32,8 +37,8 @@ class TestNoteListingPerformance:
         This test ensures tags are loaded eagerly, preventing N+1 queries.
         """
         # Create test data
-        tag1 = NoteTags(user_id=test_user.id, name="Important")
-        tag2 = NoteTags(user_id=test_user.id, name="Review")
+        tag1 = NoteTags(user_id=_persisted_user_id(test_user), name="Important")
+        tag2 = NoteTags(user_id=_persisted_user_id(test_user), name="Review")
         session.add(tag1)
         session.add(tag2)
         session.commit()
@@ -66,7 +71,7 @@ class TestNoteListingPerformance:
         """
         Verify tag filtering works correctly with eager loading.
         """
-        tag = NoteTags(user_id=test_user.id, name="Priority")
+        tag = NoteTags(user_id=_persisted_user_id(test_user), name="Priority")
         session.add(tag)
         session.commit()
         session.refresh(tag)
@@ -130,7 +135,7 @@ class TestNoteListingPerformance:
         """
         Verify filtering and pagination work together efficiently.
         """
-        tag = NoteTags(user_id=test_user.id, name="Work")
+        tag = NoteTags(user_id=_persisted_user_id(test_user), name="Work")
         session.add(tag)
         session.commit()
         session.refresh(tag)
@@ -173,6 +178,7 @@ class TestPaginationPerformance:
                 title=f"Document {i:03d}",
                 content=f"Content {i}",
                 file_name=f"doc_{i}.txt",
+                file_path=f"/tmp/doc_{i}.txt",
                 file_size=1000,
                 file_type=".txt",
                 mime_type="text/plain",
@@ -209,6 +215,7 @@ class TestPaginationPerformance:
                 title=f"Document {i:02d}",
                 content=content,
                 file_name=f"doc_{i}.txt",
+                file_path=f"/tmp/doc_{i}.txt",
                 file_size=1000,
                 file_type=".txt",
                 mime_type="text/plain",
@@ -301,7 +308,7 @@ class TestPaginationPerformance:
 class TestBulkEmbeddingInsert:
     """Test bulk embedding insert performance."""
 
-    def test_bulk_embedding_insert_single_batch(self, session: Session) -> None:
+    def test_bulk_embedding_insert_single_batch(self, session: Session, test_user: User) -> None:
         """
         Verify bulk insert handles multiple embeddings correctly.
         """
@@ -309,10 +316,11 @@ class TestBulkEmbeddingInsert:
 
         # Create a document with chunks
         doc = Document(
-            user_id=1,
+            user_id=_persisted_user_id(test_user),
             title="Test Doc",
             content="Test content",
             file_name="test.txt",
+            file_path="/tmp/test.txt",
             file_size=100,
             file_type=".txt",
             mime_type="text/plain",
@@ -328,6 +336,7 @@ class TestBulkEmbeddingInsert:
                 document_id=doc.id,
                 chunk_index=i,
                 content=f"Chunk {i} content",
+                vector_id=f"test-doc-chunk-{i}",
             )
             session.add(chunk)
             chunks.append(chunk)
@@ -343,7 +352,7 @@ class TestBulkEmbeddingInsert:
         vector_store.store_document_chunk_embeddings(
             chunks=chunks,
             embeddings=embeddings,
-            user_id=1,
+            user_id=_persisted_user_id(test_user),
             model="test-model",
         )
 
@@ -353,7 +362,7 @@ class TestBulkEmbeddingInsert:
         ).all()
         assert len(result) == 5
 
-    def test_bulk_embedding_insert_upsert_behavior(self, session: Session) -> None:
+    def test_bulk_embedding_insert_upsert_behavior(self, session: Session, test_user: User) -> None:
         """
         Verify bulk insert with ON CONFLICT updates existing embeddings.
         """
@@ -361,10 +370,11 @@ class TestBulkEmbeddingInsert:
 
         # Create document and chunks
         doc = Document(
-            user_id=1,
+            user_id=_persisted_user_id(test_user),
             title="Test Doc",
             content="Test content",
             file_name="test.txt",
+            file_path="/tmp/test.txt",
             file_size=100,
             file_type=".txt",
             mime_type="text/plain",
@@ -377,6 +387,7 @@ class TestBulkEmbeddingInsert:
             document_id=doc.id,
             chunk_index=0,
             content="Chunk content",
+            vector_id="test-upsert-chunk-0",
         )
         session.add(chunk)
         session.commit()
@@ -388,7 +399,7 @@ class TestBulkEmbeddingInsert:
         vector_store.store_document_chunk_embeddings(
             chunks=[chunk],
             embeddings=embeddings1,
-            user_id=1,
+            user_id=_persisted_user_id(test_user),
             model="model-v1",
         )
 
@@ -397,60 +408,68 @@ class TestBulkEmbeddingInsert:
         vector_store.store_document_chunk_embeddings(
             chunks=[chunk],
             embeddings=embeddings2,
-            user_id=1,
+            user_id=_persisted_user_id(test_user),
             model="model-v2",
         )
 
         # Verify only one embedding record (upserted, not duplicated)
         from sqlalchemy import text
 
-        result = session.exec(
-            text("SELECT COUNT(*) as count FROM chunk_embeddings WHERE chunk_id = :chunk_id"),
-            params={"chunk_id": chunk.id},
-        ).first()
+        result = (
+            session.connection()
+            .execute(
+                text("SELECT COUNT(*) as count FROM chunk_embeddings WHERE chunk_id = :chunk_id"),
+                parameters={"chunk_id": chunk.id},
+            )
+            .first()
+        )
+        assert result is not None
         assert result[0] == 1  # Only one record
 
-    def test_bulk_embedding_insert_validation(self, session: Session) -> None:
+    def test_bulk_embedding_insert_validation(self, session: Session, test_user: User) -> None:
         """
         Verify bulk insert validates chunks and embeddings.
         """
         vector_store = PgVectorStore(session=session)
 
         # Test: mismatched chunk and embedding counts
-        chunks = [DocumentChunks(document_id=1, chunk_index=0, content="Test")]
+        chunks = [DocumentChunks(document_id=1, chunk_index=0, content="Test", vector_id="test-1")]
         embeddings = [[0.1, 0.2], [0.3, 0.4]]  # 2 embeddings, 1 chunk
 
         with pytest.raises(ValueError, match="Chunk count does not match embedding count"):
             vector_store.store_document_chunk_embeddings(
                 chunks=chunks,
                 embeddings=embeddings,
-                user_id=1,
+                user_id=_persisted_user_id(test_user),
                 model="test",
             )
 
         # Test: empty embeddings
-        chunks = [DocumentChunks(document_id=1, chunk_index=0, content="Test")]
+        chunks = [DocumentChunks(document_id=1, chunk_index=0, content="Test", vector_id="test-2")]
         empty_embeddings = [[]]
 
         with pytest.raises(ValueError, match="Embedding vectors cannot be empty"):
             vector_store.store_document_chunk_embeddings(
                 chunks=chunks,
                 embeddings=empty_embeddings,
-                user_id=1,
+                user_id=_persisted_user_id(test_user),
                 model="test",
             )
 
-    def test_bulk_embedding_insert_dimension_consistency(self, session: Session) -> None:
+    def test_bulk_embedding_insert_dimension_consistency(
+        self, session: Session, test_user: User
+    ) -> None:
         """
         Verify bulk insert enforces consistent embedding dimensions.
         """
         from app.models.document import Document
 
         doc = Document(
-            user_id=1,
+            user_id=test_user.id,
             title="Test",
             content="Content",
             file_name="test.txt",
+            file_path="/tmp/test.txt",
             file_size=100,
             file_type=".txt",
             mime_type="text/plain",
@@ -459,8 +478,18 @@ class TestBulkEmbeddingInsert:
         session.commit()
         session.refresh(doc)
 
-        chunk1 = DocumentChunks(document_id=doc.id, chunk_index=0, content="C1")
-        chunk2 = DocumentChunks(document_id=doc.id, chunk_index=1, content="C2")
+        chunk1 = DocumentChunks(
+            document_id=doc.id,
+            chunk_index=0,
+            content="C1",
+            vector_id="test-dimension-chunk-0",
+        )
+        chunk2 = DocumentChunks(
+            document_id=doc.id,
+            chunk_index=1,
+            content="C2",
+            vector_id="test-dimension-chunk-1",
+        )
         session.add(chunk1)
         session.add(chunk2)
         session.commit()
@@ -478,7 +507,7 @@ class TestBulkEmbeddingInsert:
             vector_store.store_document_chunk_embeddings(
                 chunks=[chunk1, chunk2],
                 embeddings=embeddings,
-                user_id=1,
+                user_id=_persisted_user_id(test_user),
                 model="test",
             )
 
@@ -509,7 +538,7 @@ class TestChatSessionPerformance:
         for i in range(5):
             message = ChatMessages(
                 session_id=chat_session.id,
-                role="user" if i % 2 == 0 else "assistant",
+                role=ChatRole.user if i % 2 == 0 else ChatRole.assistant,
                 content=f"Message {i}",
             )
             session.add(message)
@@ -558,7 +587,7 @@ class TestChatSessionPerformance:
             for j in range(5):
                 message = ChatMessages(
                     session_id=chat_session.id,
-                    role="user" if j % 2 == 0 else "assistant",
+                    role=ChatRole.user if j % 2 == 0 else ChatRole.assistant,
                     content=f"Session {i} Message {j}",
                 )
                 session.add(message)
@@ -602,7 +631,7 @@ class TestChatSessionPerformance:
             for j in range(3):
                 message = ChatMessages(
                     session_id=chat_session.id,
-                    role="user" if j % 2 == 0 else "assistant",
+                    role=ChatRole.user if j % 2 == 0 else ChatRole.assistant,
                     content=f"Message {j}",
                 )
                 session.add(message)
@@ -679,7 +708,7 @@ class TestChatSessionPerformance:
                 for j in range(4):
                     message = ChatMessages(
                         session_id=chat_session.id,
-                        role="user" if j % 2 == 0 else "assistant",
+                        role=ChatRole.user if j % 2 == 0 else ChatRole.assistant,
                         content=f"Message {j}",
                     )
                     session.add(message)
@@ -694,8 +723,10 @@ class TestChatSessionPerformance:
         assert total == 6
 
         # Verify correct number of messages per session
-        for i, chat_sess in enumerate(sessions_retrieved):
-            if i < 3:
+        for chat_sess in sessions_retrieved:
+            assert chat_sess.title is not None
+            session_number = int(chat_sess.title.rsplit(" ", maxsplit=1)[1])
+            if session_number < 3:
                 assert len(chat_sess.messages) == 4
             else:
                 assert len(chat_sess.messages) == 0
@@ -717,18 +748,18 @@ class TestChatSessionPerformance:
         session.refresh(chat_session)
 
         # Add messages with various data
-        test_data = [
-            {"role": "user", "content": "Hello"},
-            {"role": "assistant", "content": "Hi there!"},
-            {"role": "user", "content": "How are you?"},
-            {"role": "assistant", "content": "I'm doing great!"},
+        test_data: list[tuple[ChatRole, str]] = [
+            (ChatRole.user, "Hello"),
+            (ChatRole.assistant, "Hi there!"),
+            (ChatRole.user, "How are you?"),
+            (ChatRole.assistant, "I'm doing great!"),
         ]
 
-        for data in test_data:
+        for role, content in test_data:
             message = ChatMessages(
                 session_id=chat_session.id,
-                role=data["role"],
-                content=data["content"],
+                role=role,
+                content=content,
             )
             session.add(message)
         session.commit()
@@ -739,8 +770,8 @@ class TestChatSessionPerformance:
 
         assert len(retrieved_session.messages) == 4
         for i, msg in enumerate(retrieved_session.messages):
-            assert msg.role == test_data[i]["role"]
-            assert msg.content == test_data[i]["content"]
+            assert msg.role == test_data[i][0]
+            assert msg.content == test_data[i][1]
 
 
 # Fixtures for tests
@@ -749,7 +780,7 @@ def test_user(session: Session) -> User:
     """Create a test user."""
     user = User(
         email="test@example.com",
-        username="testuser",
+        full_name="Test User",
         hashed_password="fake_hash",
     )
     session.add(user)

@@ -3,6 +3,8 @@ Unit tests for global exception handling and standardized error responses.
 """
 
 import pytest
+from fastapi.testclient import TestClient
+
 from app.core.exceptions import (
     AppError,
     AuthenticationError,
@@ -17,7 +19,6 @@ from app.core.exceptions import (
     ValidationError,
     global_exception_handler,
 )
-from fastapi.testclient import TestClient
 
 
 class TestErrorCodes:
@@ -183,6 +184,7 @@ class TestStandardErrorResponse:
             request_id="550e8400-e29b-41d4-a716-446655440000",
             details=[detail],
         )
+        assert response.details is not None
         assert len(response.details) == 1
         assert response.details[0].field == "email"
 
@@ -205,8 +207,9 @@ class TestExceptionHandler:
     @pytest.fixture
     def app(self):
         """Create a test FastAPI app."""
-        from app.core.middleware import RequestIDMiddleware
         from fastapi import FastAPI
+
+        from app.core.middleware import RequestIDMiddleware
 
         test_app = FastAPI()
         test_app.add_middleware(RequestIDMiddleware)
@@ -236,7 +239,7 @@ class TestExceptionHandler:
         return test_app
 
     def test_validation_error_handling(self, app):
-        client = TestClient(app)
+        client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/validation-error")
 
         assert response.status_code == 422
@@ -249,7 +252,7 @@ class TestExceptionHandler:
         assert data["details"][0]["field"] == "email"
 
     def test_auth_error_handling(self, app):
-        client = TestClient(app)
+        client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/auth-error")
 
         assert response.status_code == 401
@@ -259,7 +262,7 @@ class TestExceptionHandler:
         assert data["message"] == "Invalid token"
 
     def test_not_found_handling(self, app):
-        client = TestClient(app)
+        client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/not-found")
 
         assert response.status_code == 404
@@ -269,7 +272,7 @@ class TestExceptionHandler:
         assert data["message"] == "User not found"
 
     def test_generic_error_handling(self, app):
-        client = TestClient(app)
+        client = TestClient(app, raise_server_exceptions=False)
         response = client.get("/generic-error")
 
         assert response.status_code == 500

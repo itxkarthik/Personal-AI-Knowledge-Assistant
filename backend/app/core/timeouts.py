@@ -2,7 +2,6 @@
 Endpoint-specific timeout configurations and middleware.
 """
 
-
 # Timeout values in seconds for different endpoint categories
 TIMEOUT_CONFIG = {
     # File upload endpoints - allow longer processing time

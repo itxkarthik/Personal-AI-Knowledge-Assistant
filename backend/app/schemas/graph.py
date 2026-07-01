@@ -3,7 +3,6 @@ Graph-related schemas for knowledge graph visualization.
 """
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict
 
@@ -17,7 +16,7 @@ class NoteLinkResponse(BaseModel):
     source_note_id: int
     target_note_id: int
     link_type: str  # related | referenced | parent | child
-    description: Optional[str] = None
+    description: str | None = None
     created_at: datetime
 
 
@@ -28,12 +27,12 @@ class GraphNodeResponse(BaseModel):
 
     id: int
     title: str
-    content_preview: Optional[str] = None
+    content_preview: str | None = None
     is_favorite: bool
     is_archived: bool
     is_pinned: bool
-    color: Optional[str] = None
-    emoji: Optional[str] = None
+    color: str | None = None
+    emoji: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -43,7 +42,7 @@ class GraphResponse(BaseModel):
 
     nodes: list[GraphNodeResponse]
     edges: list[NoteLinkResponse]
-    center_node_id: Optional[int] = None  # For focused graph views
+    center_node_id: int | None = None  # For focused graph views
 
 
 class GraphAllResponse(BaseModel):
@@ -51,5 +50,5 @@ class GraphAllResponse(BaseModel):
 
     nodes: list[GraphNodeResponse]
     edges: list[NoteLinkResponse]
-    cursor: Optional[str] = None
+    cursor: str | None = None
     has_more: bool

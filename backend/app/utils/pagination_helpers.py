@@ -29,7 +29,7 @@ def calculate_pagination_metadata(
         "has_more": has_more,
         "page_size": page_size,
         "page_number": (skip // limit) + 1 if limit > 0 else 1,
-        "total_pages": (total + limit - 1) // limit if limit > 0 else 1,  # Ceiling division
+        "total_pages": ((total + limit - 1) // limit if limit > 0 else 1),  # Ceiling division
     }
 
 

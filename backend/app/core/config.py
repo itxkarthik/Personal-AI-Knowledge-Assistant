@@ -2,7 +2,7 @@ import os
 import secrets
 import warnings
 from pathlib import Path
-from typing import Annotated, Any, Literal, Optional, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import AnyUrl, BeforeValidator, EmailStr, PostgresDsn, computed_field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -66,9 +66,9 @@ class Settings(BaseSettings):
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "knowledge_assistant"
 
-    @computed_field
+    @computed_field(alias="SQLMODEL_DATABASE_URL")
     @property
-    def SQLMODEL_DATABASE_URL(self) -> PostgresDsn:
+    def sqlmodel_database_url(self) -> PostgresDsn:
         return PostgresDsn.build(
             scheme="postgresql+psycopg",
             username=self.POSTGRES_USER,
@@ -78,7 +78,7 @@ class Settings(BaseSettings):
             path=self.POSTGRES_DB,
         )
 
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str | None = None
 
     SMTP_TLS: bool = True
     SMTP_SSL: bool = False

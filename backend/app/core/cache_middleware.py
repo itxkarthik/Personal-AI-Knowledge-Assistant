@@ -2,10 +2,11 @@
 
 from collections.abc import Callable
 
-from app.utils.etag_utils import generate_etag, get_cache_duration, should_cache_request
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response, StreamingResponse
+
+from app.utils.etag_utils import generate_etag, get_cache_duration, should_cache_request
 
 
 class ETagAndCacheMiddleware(BaseHTTPMiddleware):

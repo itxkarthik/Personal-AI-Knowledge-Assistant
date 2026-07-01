@@ -1,5 +1,7 @@
 from typing import Any
 
+from fastapi import APIRouter, File, Form, Query, UploadFile
+
 from app.api.deps import CurrentUser, SessionDep
 from app.models.user import Message
 from app.schemas.document import (
@@ -17,7 +19,6 @@ from app.services.document_service import (
     update_document_metadata,
     upload_and_process_document,
 )
-from fastapi import APIRouter, File, Form, Query, UploadFile
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -61,7 +62,10 @@ async def upload_document(
     response_model=DocumentList,
     include_in_schema=False,
     responses={
-        400: {"model": StandardErrorResponse, "description": "Invalid query parameters"},
+        400: {
+            "model": StandardErrorResponse,
+            "description": "Invalid query parameters",
+        },
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
@@ -70,7 +74,10 @@ async def upload_document(
     "/",
     response_model=DocumentList,
     responses={
-        400: {"model": StandardErrorResponse, "description": "Invalid query parameters"},
+        400: {
+            "model": StandardErrorResponse,
+            "description": "Invalid query parameters",
+        },
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
@@ -91,7 +98,12 @@ def read_documents(
         limit=limit,
     )
     has_more = (skip + limit) < total
-    return DocumentList(data=documents, count=total, page_size=limit, has_more=has_more)
+    return DocumentList(
+        data=[DocumentResponse.model_validate(document) for document in documents],
+        count=total,
+        page_size=limit,
+        has_more=has_more,
+    )
 
 
 @router.get(
@@ -125,12 +137,18 @@ def read_document_content(
         session=session, current_user=current_user, document_id=document_id
     )
     return DocumentContentResponse(
-        id=document.id,
+        id=_require_document_id(document.id),
         title=document.title,
         status=document.status,
         content=document.content or "",
         updated_at=document.updated_at,
     )
+
+
+def _require_document_id(document_id: int | None) -> int:
+    if document_id is None:
+        raise RuntimeError("Document must be persisted before serialization")
+    return document_id
 
 
 @router.post(
@@ -139,7 +157,10 @@ def read_document_content(
     responses={
         401: {"model": StandardErrorResponse, "description": "Authentication required"},
         404: {"model": StandardErrorResponse, "description": "Document not found"},
-        409: {"model": StandardErrorResponse, "description": "Document content unavailable"},
+        409: {
+            "model": StandardErrorResponse,
+            "description": "Document content unavailable",
+        },
         503: {"model": StandardErrorResponse, "description": "Local AI unavailable"},
     },
 )
@@ -165,7 +186,11 @@ async def regenerate_document_summary_endpoint(
     },
 )
 def update_document(
-    *, session: SessionDep, current_user: CurrentUser, document_id: int, body: DocumentUpdate
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    document_id: int,
+    body: DocumentUpdate,
 ) -> Any:
     return update_document_metadata(
         session=session,
