@@ -1,5 +1,7 @@
 FROM python:3.12.10-slim
 
+ARG INSTALL_DEV=false
+
 # Set working directory
 WORKDIR /usr/src/app/backend
 
@@ -16,10 +18,16 @@ RUN apt-get update && \
 
 # Copy the canonical requirements file first for better caching
 COPY requirements.txt /usr/src/app/requirements.txt
+COPY requirements-dev.txt /usr/src/app/requirements-dev.txt
+COPY pyproject.toml /usr/src/app/pyproject.toml
 
 # Install Python dependencies
 RUN pip install --upgrade pip && \
-    pip install -r /usr/src/app/requirements.txt
+    pip install -r /usr/src/app/requirements.txt && \
+    if [ "$INSTALL_DEV" = "true" ]; then pip install -r /usr/src/app/requirements-dev.txt; fi
+
+# Present the container interpreter through the same path used by editor tooling.
+RUN ln -s /usr/local /usr/src/app/.venv
 
 # Copy application code
 COPY backend/ /usr/src/app/backend/

@@ -52,6 +52,8 @@ services:
     build:
       context: .
       dockerfile: backend/Dockerfile
+      args:
+        INSTALL_DEV: "true"
     container_name: pka-backend
     environment:
       HOST: 0.0.0.0
@@ -94,6 +96,8 @@ services:
       start_period: 15s
     volumes:
       - ./backend:/usr/src/app/backend
+      - ./pyproject.toml:/usr/src/app/pyproject.toml:ro
+      - ./requirements-dev.txt:/usr/src/app/requirements-dev.txt:ro
       - ./backend/uploads:/usr/src/app/backend/uploads
       - ./backend/logs:/usr/src/app/backend/logs
     networks:
