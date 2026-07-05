@@ -512,6 +512,7 @@ def ensure_workspace_embeddings(
     embedding_model: str,
     include_documents: bool = True,
     include_notes: bool = True,
+    include_chats: bool = False,
 ) -> None:
     if include_documents:
         indexed_chunk_ids = vector_store.indexed_document_chunk_ids(
@@ -568,6 +569,41 @@ def ensure_workspace_embeddings(
             )
             vector_store.store_note_embeddings(
                 notes=[(note_id, content_hash) for note_id, _, content_hash in batch],
+                embeddings=embeddings,
+                user_id=user_id,
+                model=embedding_model,
+            )
+
+    if include_chats:
+        indexed_chat_hashes = vector_store.chat_embedding_hashes(
+            user_id=user_id, model=embedding_model
+        )
+        stale_messages: list[tuple[int, int, str, str]] = []
+        for message in vector_store.active_chat_messages(user_id=user_id):
+            if message.id is None or message.session_id is None:
+                continue
+            embedding_text = message.content[:12000]
+            content_hash = hashlib.sha256(embedding_text.encode("utf-8")).hexdigest()
+            if indexed_chat_hashes.get(message.id) != content_hash:
+                stale_messages.append(
+                    (message.id, message.session_id, embedding_text, content_hash)
+                )
+
+        for start in range(0, len(stale_messages), 32):
+            batch = stale_messages[start : start + 32]
+            embeddings, _ = _run_async(
+                generate_embeddings(
+                    session=session,
+                    user_id=user_id,
+                    texts=[embedding_text for _, _, embedding_text, _ in batch],
+                    model=embedding_model,
+                )
+            )
+            vector_store.store_chat_message_embeddings(
+                messages=[
+                    (message_id, session_id, content_hash)
+                    for message_id, session_id, _, content_hash in batch
+                ],
                 embeddings=embeddings,
                 user_id=user_id,
                 model=embedding_model,

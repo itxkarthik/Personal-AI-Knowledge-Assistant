@@ -2,7 +2,14 @@ from unittest import TestCase
 
 from fastapi.routing import APIRoute
 
-from app.api.routes.search import _merge_result, router
+from app.ai.vectorstore import ChatVectorSearchResult, PgVectorStore
+from app.api.routes.search import (
+    SEMANTIC_SIMILARITY_THRESHOLD,
+    _chat_results_from_hits,
+    _is_relevant_semantic_score,
+    _merge_result,
+    router,
+)
 from app.schemas.search import SearchResultItem
 
 
@@ -60,3 +67,53 @@ class SearchRouteTests(TestCase):
 
         self.assertEqual(results[("document", 9)].snippet, "Relevant semantic passage")
         self.assertEqual(results[("document", 9)].score, 0.81)
+
+    def test_semantic_threshold_rejects_unrelated_results(self) -> None:
+        self.assertTrue(_is_relevant_semantic_score(SEMANTIC_SIMILARITY_THRESHOLD))
+        self.assertFalse(_is_relevant_semantic_score(SEMANTIC_SIMILARITY_THRESHOLD - 0.001))
+
+    def test_chat_hits_collapse_to_best_message_per_session(self) -> None:
+        hits = [
+            ChatVectorSearchResult(
+                message_id=11,
+                session_id=4,
+                session_title="Project planning",
+                role="user",
+                content="What projects are active?",
+                score=0.63,
+                created_at=None,
+                updated_at=None,
+            ),
+            ChatVectorSearchResult(
+                message_id=12,
+                session_id=4,
+                session_title="Project planning",
+                role="assistant",
+                content="The Orion Habitat Study is active.",
+                score=0.82,
+                created_at=None,
+                updated_at=None,
+            ),
+            ChatVectorSearchResult(
+                message_id=20,
+                session_id=8,
+                session_title="Unrelated",
+                role="assistant",
+                content="A weak match",
+                score=SEMANTIC_SIMILARITY_THRESHOLD - 0.01,
+                created_at=None,
+                updated_at=None,
+            ),
+        ]
+
+        results = _chat_results_from_hits(hits)
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].id, 4)
+        self.assertEqual(results[0].snippet, "The Orion Habitat Study is active.")
+        self.assertEqual(results[0].score, 0.82)
+
+    def test_vector_store_exposes_chat_embedding_contract(self) -> None:
+        self.assertTrue(hasattr(PgVectorStore, "chat_embedding_hashes"))
+        self.assertTrue(hasattr(PgVectorStore, "store_chat_message_embeddings"))
+        self.assertTrue(hasattr(PgVectorStore, "chat_similarity_search"))

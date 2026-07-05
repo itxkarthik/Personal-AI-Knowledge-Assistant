@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import text
 from sqlmodel import Session, col, select
 
+from app.models.chat import ChatMessages, ChatRole, ChatSession
 from app.models.document import Document, DocumentChunks
 
 
@@ -24,6 +26,18 @@ class NoteVectorSearchResult:
     title: str
     content: str
     score: float
+
+
+@dataclass(slots=True)
+class ChatVectorSearchResult:
+    message_id: int
+    session_id: int
+    session_title: str | None
+    role: str
+    content: str
+    score: float
+    created_at: datetime | None
+    updated_at: datetime | None
 
 
 class PgVectorStore:
@@ -74,6 +88,23 @@ class PgVectorStore:
 
         self.session.connection().execute(
             text(
+                f"""
+				CREATE TABLE IF NOT EXISTS chat_message_embeddings (
+					message_id INTEGER PRIMARY KEY REFERENCES chat_messages(id) ON DELETE CASCADE,
+					session_id INTEGER NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+					user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+					model VARCHAR(100) NOT NULL,
+					content_hash VARCHAR(64) NOT NULL,
+					embedding vector({embedding_dimensions}) NOT NULL,
+					created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+					updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+				)
+				"""
+            )
+        )
+
+        self.session.connection().execute(
+            text(
                 """
 				CREATE INDEX IF NOT EXISTS ix_chunk_embeddings_user_document
 				ON chunk_embeddings (user_id, document_id)
@@ -105,6 +136,25 @@ class PgVectorStore:
                 """
 				CREATE INDEX IF NOT EXISTS ix_note_embeddings_embedding_cosine
 				ON note_embeddings USING ivfflat (embedding vector_cosine_ops)
+				WITH (lists = 100)
+				"""
+            )
+        )
+
+        self.session.connection().execute(
+            text(
+                """
+				CREATE INDEX IF NOT EXISTS ix_chat_message_embeddings_user_session
+				ON chat_message_embeddings (user_id, session_id)
+				"""
+            )
+        )
+
+        self.session.connection().execute(
+            text(
+                """
+				CREATE INDEX IF NOT EXISTS ix_chat_message_embeddings_embedding_cosine
+				ON chat_message_embeddings USING ivfflat (embedding vector_cosine_ops)
 				WITH (lists = 100)
 				"""
             )
@@ -153,6 +203,35 @@ class PgVectorStore:
         )
         return {int(row.note_id): str(row.content_hash) for row in rows}
 
+    def chat_embedding_hashes(self, *, user_id: int, model: str) -> dict[int, str]:
+        rows = (
+            self.session.connection()
+            .execute(
+                text(
+                    """
+				SELECT message_id, content_hash
+				FROM chat_message_embeddings
+				WHERE user_id = :user_id AND model = :model
+				"""
+                ),
+                parameters={"user_id": user_id, "model": model},
+            )
+            .all()
+        )
+        return {int(row.message_id): str(row.content_hash) for row in rows}
+
+    def active_chat_messages(self, *, user_id: int) -> list[ChatMessages]:
+        return list(
+            self.session.exec(
+                select(ChatMessages)
+                .join(ChatSession, col(ChatSession.id) == col(ChatMessages.session_id))
+                .where(
+                    ChatSession.user_id == user_id,
+                    col(ChatMessages.role).in_([ChatRole.user, ChatRole.assistant]),
+                )
+            ).all()
+        )
+
     def store_note_embeddings(
         self,
         *,
@@ -194,6 +273,62 @@ class PgVectorStore:
 				VALUES {", ".join(values_clauses)}
 				ON CONFLICT (note_id)
 				DO UPDATE SET
+					user_id = EXCLUDED.user_id,
+					model = EXCLUDED.model,
+					content_hash = EXCLUDED.content_hash,
+					embedding = EXCLUDED.embedding,
+					updated_at = NOW()
+				"""
+            ),
+            parameters=params,
+        )
+
+    def store_chat_message_embeddings(
+        self,
+        *,
+        messages: Sequence[tuple[int, int, str]],
+        embeddings: Sequence[Sequence[float]],
+        user_id: int,
+        model: str,
+    ) -> None:
+        if len(messages) != len(embeddings):
+            raise ValueError("Chat message count does not match embedding count")
+        if not messages:
+            return
+
+        dimensions = len(embeddings[0])
+        if dimensions <= 0:
+            raise ValueError("Embedding vectors cannot be empty")
+        self.ensure_schema(embedding_dimensions=dimensions)
+
+        values_clauses: list[str] = []
+        params: dict[str, object] = {}
+        for index, ((message_id, session_id, content_hash), embedding) in enumerate(
+            zip(messages, embeddings)
+        ):
+            if len(embedding) != dimensions:
+                raise ValueError("All embedding vectors must use the same dimensions")
+            prefix = f"m{index}"
+            values_clauses.append(
+                f"(:{prefix}_message_id, :{prefix}_session_id, :{prefix}_user_id, "
+                f":{prefix}_model, :{prefix}_content_hash, CAST(:{prefix}_embedding AS vector))"
+            )
+            params[f"{prefix}_message_id"] = message_id
+            params[f"{prefix}_session_id"] = session_id
+            params[f"{prefix}_user_id"] = user_id
+            params[f"{prefix}_model"] = model
+            params[f"{prefix}_content_hash"] = content_hash
+            params[f"{prefix}_embedding"] = self._to_vector_literal(embedding)
+
+        self.session.connection().execute(
+            text(
+                f"""
+				INSERT INTO chat_message_embeddings
+					(message_id, session_id, user_id, model, content_hash, embedding)
+				VALUES {", ".join(values_clauses)}
+				ON CONFLICT (message_id)
+				DO UPDATE SET
+					session_id = EXCLUDED.session_id,
 					user_id = EXCLUDED.user_id,
 					model = EXCLUDED.model,
 					content_hash = EXCLUDED.content_hash,
@@ -420,6 +555,78 @@ class PgVectorStore:
                 title=row.title,
                 content=row.content,
                 score=float(row.score),
+            )
+            for row in rows
+        ]
+
+    def chat_similarity_search(
+        self,
+        *,
+        user_id: int,
+        query_embedding: Sequence[float],
+        top_k: int = 20,
+        similarity_threshold: float | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+    ) -> list[ChatVectorSearchResult]:
+        if not query_embedding:
+            return []
+
+        embedding_literal = self._to_vector_literal(query_embedding)
+        where_clauses = ["cme.user_id = :user_id"]
+        params: dict[str, object] = {
+            "user_id": user_id,
+            "embedding": embedding_literal,
+            "top_k": max(1, top_k),
+        }
+        if similarity_threshold is not None:
+            where_clauses.append(
+                "(1 - (cme.embedding <=> CAST(:embedding AS vector))) >= :similarity_threshold"
+            )
+            params["similarity_threshold"] = similarity_threshold
+        if date_from is not None:
+            where_clauses.append("cm.created_at >= :date_from")
+            params["date_from"] = date_from
+        if date_to is not None:
+            where_clauses.append("cm.created_at <= :date_to")
+            params["date_to"] = date_to
+
+        rows = (
+            self.session.connection()
+            .execute(
+                text(
+                    f"""
+				SELECT
+					cm.id AS message_id,
+					cs.id AS session_id,
+					cs.title AS session_title,
+					cm.role AS role,
+					cm.content AS content,
+					cm.created_at AS created_at,
+					cm.updated_at AS updated_at,
+					(1 - (cme.embedding <=> CAST(:embedding AS vector))) AS score
+				FROM chat_message_embeddings cme
+				INNER JOIN chat_messages cm ON cm.id = cme.message_id
+				INNER JOIN chat_sessions cs ON cs.id = cme.session_id
+				WHERE {" AND ".join(where_clauses)}
+				ORDER BY cme.embedding <=> CAST(:embedding AS vector)
+				LIMIT :top_k
+				"""
+                ),
+                parameters=params,
+            )
+            .all()
+        )
+        return [
+            ChatVectorSearchResult(
+                message_id=int(row.message_id),
+                session_id=int(row.session_id),
+                session_title=row.session_title,
+                role=str(row.role),
+                content=str(row.content),
+                score=float(row.score),
+                created_at=row.created_at,
+                updated_at=row.updated_at,
             )
             for row in rows
         ]

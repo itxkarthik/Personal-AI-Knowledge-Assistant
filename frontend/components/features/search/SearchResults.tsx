@@ -5,6 +5,8 @@ import Link from "next/link";
 
 import type { SearchResultItem } from "@/types";
 
+import { getSearchResultHref } from "./searchResultHref";
+
 interface SearchResultsProps {
   query: string;
   results: SearchResultItem[];
@@ -14,14 +16,14 @@ interface SearchResultsProps {
 
 function getEntityMeta(entityType: SearchResultItem["entity_type"]) {
   if (entityType === "document") {
-    return { label: "Document", icon: FileText, href: "/dashboard/documents" };
+    return { label: "Document", icon: FileText };
   }
 
   if (entityType === "note") {
-    return { label: "Note", icon: NotebookPen, href: "/dashboard/notes" };
+    return { label: "Note", icon: NotebookPen };
   }
 
-  return { label: "Chat", icon: MessageSquare, href: "/dashboard/chat" };
+  return { label: "Chat", icon: MessageSquare };
 }
 
 export function SearchResults({ query, results, total, isLoading = false }: SearchResultsProps) {
@@ -50,7 +52,7 @@ export function SearchResults({ query, results, total, isLoading = false }: Sear
       {results.map((result) => {
         const meta = getEntityMeta(result.entity_type);
         const EntityIcon = meta.icon;
-        const href = result.entity_type === "chat" ? `${meta.href}/${result.id}` : meta.href;
+        const href = getSearchResultHref(result);
 
         return (
           <Link key={`${result.entity_type}-${result.id}-${result.updated_at ?? ""}`} href={href} className="block border border-border bg-background p-4 hover:bg-muted">
