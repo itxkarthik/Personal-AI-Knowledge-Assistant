@@ -4,6 +4,7 @@ import logging
 from sqlmodel import SQLModel, create_engine
 
 from app.core.config import settings
+from app.core.migrations import upgrade_database
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,12 @@ async def test_db_connection() -> bool:
         return False
 
 
-async def create_db_and_tables_with_retry(
+async def upgrade_database_with_retry(
     max_retries: int = 5,
     initial_delay: int = 1,
 ) -> bool:
     """
-    Create database tables with connection retry logic.
+    Apply database migrations with connection retry logic.
     Used during application startup to handle cases where database
     is not immediately available (e.g., in Docker Compose).
 
@@ -77,9 +78,8 @@ async def create_db_and_tables_with_retry(
             if not await test_db_connection():
                 raise ConnectionError("Database connection test failed")
 
-            # Create tables
-            create_db_and_tables()
-            logger.info("✓ Database connected and tables created successfully")
+            upgrade_database(engine)
+            logger.info("Database migrations applied successfully")
             return True
 
         except Exception as e:

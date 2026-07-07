@@ -14,7 +14,7 @@ from app.api.routes.test import router as test_router
 from app.core.cache_middleware import ETagAndCacheMiddleware
 from app.core.config import settings
 from app.core.csrf import CSRFMiddleware
-from app.core.database import create_db_and_tables_with_retry, test_db_connection
+from app.core.database import test_db_connection
 from app.core.exceptions import AppError, global_exception_handler
 from app.core.middleware import (
     MaxRequestBodySizeMiddleware,
@@ -39,13 +39,8 @@ async def lifespan(_: FastAPI):
     try:
         logger.info("Starting application...")
 
-        # Initialize database with retry logic
-        # This ensures the app can handle cases where the database
-        # is not immediately available (e.g., in Docker Compose)
-        await create_db_and_tables_with_retry(
-            max_retries=5,
-            initial_delay=1,
-        )
+        if not await test_db_connection():
+            raise ConnectionError("Database connection test failed")
 
         logger.info("✓ Application startup complete")
     except Exception as e:

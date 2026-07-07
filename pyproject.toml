@@ -36,6 +36,7 @@ line_length = 100
 py_version = 312
 skip_gitignore = false
 src_paths = ["backend", "app"]
+known_third_party = ["alembic", "sqlalchemy"]
 skip = ["alembic", "migrations", ".venv"]
 
 [tool.ruff]
