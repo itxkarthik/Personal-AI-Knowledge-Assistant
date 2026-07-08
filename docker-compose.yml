@@ -10,10 +10,11 @@ services:
     environment:
       # Relative path for browser-side requests (proxied by Next.js)
       NEXT_PUBLIC_API_URL: /api/v1
+      NEXT_PUBLIC_FRONTEND_URL: ${NEXT_PUBLIC_FRONTEND_URL:-http://localhost:8080}
       # Backend URL for Next.js server-side rewrites (internal Docker network)
       BACKEND_URL: http://backend:3000
     ports:
-      - "8080:3000"
+      - "${FRONTEND_PORT:-8080}:3000"
     depends_on:
       backend:
         condition: service_healthy
@@ -94,7 +95,7 @@ services:
       OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:1b}
       OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
     ports:
-      - "3000:3000"
+      - "${BACKEND_PORT:-3000}:3000"
     depends_on:
       db:
         condition: service_healthy
