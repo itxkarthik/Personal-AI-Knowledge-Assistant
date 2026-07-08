@@ -72,10 +72,23 @@ docker compose up --build -d
 
 ## Configuration
 
-Copy the example environment file and set secure local values before deployment:
+For Docker, copy the root example and set local secrets:
+
+```bash
+cp .env.example .env
+```
+
+For backend-only development outside Docker, copy the backend example:
 
 ```bash
 cp backend/.env.example backend/.env
+```
+
+Use `.env.docker.example` when you prefer an explicit Compose env file:
+
+```bash
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker --profile ai up --build -d
 ```
 
 The main settings are:
@@ -89,6 +102,8 @@ The main settings are:
 | `FRONTEND_HOST` | Allowed frontend origin |
 | `SMTP_HOST` | SMTP server used for verification emails |
 | `SMTP_PORT` | SMTP server port (`1025` for local Mailpit) |
+| `SMTP_USER` | SMTP username; for Gmail this is the sending Gmail address |
+| `SMTP_PASSWORD` | SMTP password; for Gmail this is a Google app password |
 | `EMAILS_FROM_EMAIL` | Sender address for verification emails |
 | `OLLAMA_BASE_URL` | Optional Ollama endpoint |
 
