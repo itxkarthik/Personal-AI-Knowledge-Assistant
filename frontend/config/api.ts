@@ -31,6 +31,9 @@ export const apiConfig = {
 	endpoints: {
 		login: "/login/access-token",
 		register: "/users/signup",
+		verifyEmail: "/users/verify-email",
+		resendVerification: "/users/resend-verification",
+		changeEmail: "/users/me/email-change",
 		refresh: "/auth/refresh",
 		me: "/users/me",
 		logout: "/auth/logout",

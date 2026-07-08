@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { Button, Card, CardContent, Input, Label } from "@/components/ui";
 import { getCurrentUser, login } from "@/lib/api/auth";
+import { APIRequestError } from "@/lib/api/client";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { useAuthStore } from "@/store/authStore";
 
@@ -34,6 +35,10 @@ export default function LoginPage() {
       setAuth({ user });
       router.push("/dashboard");
     } catch (err) {
+      if (err instanceof APIRequestError && err.errorCode === "email_not_verified") {
+        router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Unable to login.");
     } finally {
       setIsSubmitting(false);

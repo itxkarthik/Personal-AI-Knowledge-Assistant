@@ -30,7 +30,7 @@ export default function RegisterPage() {
     setIsSubmitting(true);
     try {
       await register({ full_name: fullName, email, password });
-      router.push("/auth/login");
+      router.push(`/auth/verify-email?email=${encodeURIComponent(email)}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to register.");
     } finally {

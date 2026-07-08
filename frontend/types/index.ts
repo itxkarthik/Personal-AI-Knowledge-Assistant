@@ -33,11 +33,23 @@ export interface RegisterRequest {
 	full_name?: string | null;
 }
 
+export interface VerificationChallenge {
+	masked_email: string;
+	expires_at: string;
+	resend_available_at: string;
+}
+
+export interface ResendVerificationResponse {
+	message: string;
+	retry_after_seconds: number;
+}
+
 export interface User {
 	id: number;
 	email: string;
 	is_active: boolean;
 	is_superuser: boolean;
+	is_verified: boolean;
 	full_name?: string | null;
 	created_at?: string | null;
 }

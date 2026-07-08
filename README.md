@@ -12,6 +12,7 @@ A self-hosted knowledge workspace for Markdown notes, document ingestion, relati
 - Hybrid full-text and semantic search across documents, notes, and chats
 - Conversational chat with grounded answers from documents and notes when relevant
 - Authenticated, user-isolated workspaces
+- Six-digit email verification with automatic sign-in
 - Optional local model integration through Ollama
 
 <!--## Screenshots
@@ -45,6 +46,7 @@ Open:
 - Swagger API documentation: [http://localhost:3000/docs](http://localhost:3000/docs)
 - ReDoc API documentation: [http://localhost:3000/redoc](http://localhost:3000/redoc)
 - Backend health: [http://localhost:3000/health/ready](http://localhost:3000/health/ready)
+- Development email inbox: [http://localhost:8025](http://localhost:8025)
 
 The frontend runs on port `8080`; FastAPI and its documentation run on port `3000`. Therefore, `http://localhost:8080/docs` returns `404` by design. Use `http://localhost:3000/docs`.
 
@@ -85,7 +87,40 @@ The main settings are:
 | `POSTGRES_DB` | Database name |
 | `SECRET_KEY` | Token-signing secret |
 | `FRONTEND_HOST` | Allowed frontend origin |
+| `SMTP_HOST` | SMTP server used for verification emails |
+| `SMTP_PORT` | SMTP server port (`1025` for local Mailpit) |
+| `EMAILS_FROM_EMAIL` | Sender address for verification emails |
 | `OLLAMA_BASE_URL` | Optional Ollama endpoint |
+
+Local Docker uses Mailpit, so verification emails stay on the machine and can be read at `http://localhost:8025`. Production deployments must provide a real SMTP host and sender address.
+
+### Database migrations
+
+Alembic is the authoritative schema manager. The backend applies pending migrations before Uvicorn starts. Before the first upgrade of an existing deployment, create a database backup:
+
+```bash
+docker compose exec db pg_dump -U postgres knowledge_assistant > knowledge_assistant-backup.sql
+```
+
+Inspect and apply migrations manually when needed:
+
+```bash
+docker compose exec backend alembic current
+docker compose exec backend alembic history
+docker compose exec backend alembic upgrade head
+```
+
+Create a reviewed schema revision after changing SQLModel metadata:
+
+```bash
+docker compose exec backend alembic revision --autogenerate -m "describe schema change"
+```
+
+Downgrade only after reviewing the target revision and restoring from backup if necessary:
+
+```bash
+docker compose exec backend alembic downgrade -1
+```
 
 Ollama is optional for notes, document extraction, authentication, and graph features. The default stack stays lightweight and reports AI as unavailable without writing placeholder chat messages.
 

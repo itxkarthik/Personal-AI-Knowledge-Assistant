@@ -76,6 +76,16 @@ services:
       # Security
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
 
+      # Email verification
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-False}
+      SMTP_SSL: ${SMTP_SSL:-False}
+      EMAILS_FROM_EMAIL: ${EMAILS_FROM_EMAIL:-no-reply@example.com}
+      EMAILS_FROM_NAME: ${EMAILS_FROM_NAME:-Personal Knowledge Assistant}
+
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
@@ -88,6 +98,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health/ready"]
       interval: 10s
@@ -103,6 +115,15 @@ services:
     networks:
       - pka-network
     command: python run.py
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: pka-mailpit
+    ports:
+      - "${MAILPIT_SMTP_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
+    networks:
+      - pka-network
 
   # Optional local AI runtime. Start with: docker compose --profile ai up --build -d
   ollama:

@@ -6,6 +6,8 @@ import type {
 	RegisterRequest,
 	TokenResponse,
 	User,
+	VerificationChallenge,
+	ResendVerificationResponse,
 } from "@/types";
 import { APIRequestError } from "@/lib/api/client";
 
@@ -35,9 +37,9 @@ export async function login(payload: LoginRequest): Promise<TokenResponse> {
 	}
 }
 
-export async function register(payload: RegisterRequest): Promise<User> {
+export async function register(payload: RegisterRequest): Promise<VerificationChallenge> {
 	try {
-		const response = await apiClient.post<User>(apiConfig.endpoints.register, payload);
+		const response = await apiClient.post<VerificationChallenge>(apiConfig.endpoints.register, payload);
 		return response.data;
 	} catch (error) {
 		if (error instanceof APIRequestError) {
@@ -47,6 +49,33 @@ export async function register(payload: RegisterRequest): Promise<User> {
 			errorCode: "REGISTER_FAILED",
 		});
 	}
+}
+
+export async function verifyEmail(email: string, code: string): Promise<TokenResponse> {
+	const response = await apiClient.post<TokenResponse>(apiConfig.endpoints.verifyEmail, {
+		email,
+		code,
+	});
+	return response.data;
+}
+
+export async function resendVerification(email: string): Promise<ResendVerificationResponse> {
+	const response = await apiClient.post<ResendVerificationResponse>(
+		apiConfig.endpoints.resendVerification,
+		{ email }
+	);
+	return response.data;
+}
+
+export async function changeEmail(
+	newEmail: string,
+	password: string
+): Promise<VerificationChallenge> {
+	const response = await apiClient.post<VerificationChallenge>(apiConfig.endpoints.changeEmail, {
+		new_email: newEmail,
+		password,
+	});
+	return response.data;
 }
 
 export async function refreshToken(refresh_token?: string): Promise<TokenResponse> {
