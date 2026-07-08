@@ -1,6 +1,6 @@
-# Personal Knowledge Assistant
+# Cognolith
 
-A self-hosted knowledge workspace for Markdown notes, document ingestion, relationship graphs, hybrid search, and local AI chat. The stack uses Next.js, FastAPI, PostgreSQL with pgvector, and optional Ollama models.
+Cognolith is a self-hosted knowledge workspace for connected notes, document ingestion, relationship graphs, hybrid search, and local AI chat. It runs on Next.js, FastAPI, PostgreSQL with pgvector, and optional Ollama models.
 
 ## Features
 
@@ -35,8 +35,8 @@ A self-hosted knowledge workspace for Markdown notes, document ingestion, relati
 ### Run the stack
 
 ```bash
-git clone https://github.com/itxkarthik/Personal-AI-Knowledge-Assistant.git
-cd Personal-AI-Knowledge-Assistant
+git clone https://github.com/itxkarthik/cognolith.git
+cd cognolith
 docker compose --profile ai up --build -d
 ```
 
@@ -249,53 +249,70 @@ curl http://localhost:3000/health/ready
 flowchart LR
     User["Browser"]
 
-    subgraph Frontend["Frontend container :8080"]
-        Next["Next.js 16 application"]
-        Workspace["Notes, documents, chat, search, graph UI"]
-        Client["Authenticated API client"]
-        Workspace --> Client
-        Next --> Workspace
+    subgraph Frontend["Cognolith frontend :8080"]
+        Next["Next.js 16 app"]
+        Shell["Authenticated workspace shell"]
+        UI["Dashboard, notes, documents, search, chat, graph, settings"]
+        APIClient["API client and /api/v1 rewrite"]
+        Next --> Shell --> UI --> APIClient
     end
 
-    subgraph Backend["Backend container :3000"]
-        Proxy["FastAPI routes /api/v1"]
-        Auth["Authentication and user isolation"]
-        Services["Notes, documents, chat, search, graph services"]
-        Ingestion["Document extraction and chunking"]
-        RAG["RAG orchestration and source attribution"]
-        Proxy --> Auth --> Services
-        Services --> Ingestion
-        Services --> RAG
+    subgraph Backend["Cognolith API :3000"]
+        Migrations["Alembic bootstrap"]
+        FastAPI["FastAPI routes"]
+        Auth["Session auth, CSRF, email verification"]
+        Services["Workspace services"]
+        Notes["Notes, folders, tags, wiki links"]
+        Documents["Document upload, extraction, chunking, summaries"]
+        Search["Hybrid search"]
+        Chat["RAG chat orchestration"]
+        Graph["Knowledge graph relationships"]
+        Migrations --> FastAPI
+        FastAPI --> Auth --> Services
+        Services --> Notes
+        Services --> Documents
+        Services --> Search
+        Services --> Chat
+        Services --> Graph
     end
 
-    subgraph Database["PostgreSQL :5432"]
-        Records["Users, notes, documents, chats, links"]
-        FullText["PostgreSQL full-text indexes"]
-        Vectors["pgvector chunk and note embeddings"]
+    subgraph Database["PostgreSQL + pgvector :5432"]
+        Core["Users, sessions, notes, documents, chats"]
+        Links["Note links and graph edges"]
+        FullText["Full-text indexes"]
+        Vectors["Document and note embeddings"]
+        OTP["Hashed email OTP records"]
     end
 
     subgraph AI["Optional Ollama :11434"]
-        ChatModel["Selected chat model"]
+        ChatModel["Per-user chat model"]
         EmbedModel["Embedding model"]
     end
 
+    SMTP["SMTP or Mailpit :8025"]
     Files["Uploaded file storage"]
 
-    User -->|"HTTP :8080"| Next
-    Client -->|"Next.js rewrite /api/v1/*"| Proxy
-    Services --> Records
-    Services --> FullText
-    Ingestion --> Files
-    Ingestion --> Records
-    Ingestion -->|"Create embeddings"| EmbedModel
+    User -->|"HTTP"| Next
+    APIClient -->|"Docker network"| FastAPI
+    Auth --> OTP
+    Auth -->|"Verification email"| SMTP
+    Notes --> Core
+    Notes --> Links
+    Documents --> Files
+    Documents --> Core
+    Documents -->|"Create embeddings"| EmbedModel
+    Search --> FullText
+    Search --> Vectors
+    Graph --> Links
+    Chat -->|"Retrieve context"| Search
+    Chat -->|"Grounded prompt"| ChatModel
     EmbedModel --> Vectors
-    RAG -->|"Semantic retrieval"| Vectors
-    RAG -->|"Lexical retrieval"| FullText
-    RAG -->|"Grounded prompt"| ChatModel
-    ChatModel -->|"Answer with sources"| RAG
+    ChatModel -->|"Answer with sources"| Chat
 ```
 
-The browser communicates only with the Next.js application. Browser API requests use the `/api/v1` rewrite to reach FastAPI inside the Docker network. FastAPI enforces account ownership before services access records, files, search indexes, or AI models. Search combines PostgreSQL full-text ranking with pgvector similarity; chat reuses the same indexed context when a question requires workspace grounding.
+The browser communicates with the Next.js application on port `8080`. API calls go through the `/api/v1` rewrite to FastAPI on port `3000`, where authentication, CSRF checks, email verification, and account ownership are enforced before any workspace data is touched.
+
+PostgreSQL stores users, sessions, notes, document metadata, chat history, graph links, full-text indexes, and pgvector embeddings. Uploaded files live on the application filesystem. Alembic runs before the backend starts so schema changes are versioned instead of inferred at runtime. Ollama is optional: Cognolith can run without local AI, while chat, semantic search, summaries, and embeddings become richer when the configured models are available.
 
 Key directories:
 
@@ -314,7 +331,7 @@ backend/app/schemas/   Request and response schemas
 
 Keep pull requests focused, include verification steps, and document any environment or schema changes. Use clear commit messages that describe behavior rather than implementation detail.
 
-Use [GitHub Issues](https://github.com/itxkarthik/Personal-AI-Knowledge-Assistant/issues) for bug reports, support questions, and feature requests.
+Use [GitHub Issues](https://github.com/itxkarthik/cognolith/issues) for bug reports, support questions, and feature requests.
 
 ## License
 
