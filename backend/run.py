@@ -13,4 +13,5 @@ if __name__ == "__main__":
         port=settings.PORT,
         reload=settings.DEBUG,
         log_level=settings.LOG_LEVEL.lower(),
+        ws_max_size=settings.WEBSOCKET_MAX_MESSAGE_SIZE,
     )

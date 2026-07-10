@@ -70,7 +70,7 @@ async def upload_and_process_document(
     if current_user.id is None:
         raise HTTPException(status_code=400, detail="Invalid user context")
 
-    saved_path = _save_upload(file)
+    saved_path = await _save_upload(file)
     file_size = Path(saved_path).stat().st_size
 
     document = Document(
@@ -180,7 +180,7 @@ async def _validate_and_prepare(file: UploadFile) -> None:
     await validate_upload_file(file)
 
 
-def _save_upload(file: UploadFile) -> str:
+async def _save_upload(file: UploadFile) -> str:
     upload_dir = Path(settings.UPLOAD_DIR)
     upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -188,9 +188,25 @@ def _save_upload(file: UploadFile) -> str:
     unique_name = f"{uuid.uuid4().hex}{ext}"
     destination = upload_dir / unique_name
 
-    content = file.file.read()
-    with open(destination, "wb") as output:
-        output.write(content)
+    total_size = 0
+    try:
+        with open(destination, "wb") as output:
+            while chunk := await file.read(settings.UPLOAD_CHUNK_SIZE):
+                total_size += len(chunk)
+                if total_size > settings.MAX_FILE_SIZE:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            "File too large. Maximum size: "
+                            f"{settings.MAX_FILE_SIZE // (1024 * 1024)} MB"
+                        ),
+                    )
+                output.write(chunk)
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    finally:
+        await file.seek(0)
 
     return str(destination)
 

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: process.cwd(),
   async rewrites() {
     // In Docker, BACKEND_URL is http://backend:3000
     // Locally, it's http://localhost:3000

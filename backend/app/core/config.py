@@ -133,10 +133,18 @@ class Settings(BaseSettings):
     FIRST_SUPERUSER_PASSWORD: str = "changethis"
 
     def _check_default_secret(self, var_name: str, value: str | None) -> None:
-        if value == "changethis":
+        placeholders = {
+            "changethis",
+            "change-me",
+            "change-me-in-production",
+            "postgres",
+            "password",
+            "secret",
+        }
+        if value and value.strip().lower() in placeholders:
             message = (
-                f'The value of {var_name} is "changethis",'
-                "for security, please change it, atleast for deployments."
+                f"The value of {var_name} is a known placeholder; "
+                "replace it with a generated secret before deployment."
             )
             if self.ENVIRONMENT == "local":
                 warnings.warn(message, stacklevel=1)
@@ -145,12 +153,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
-        # Always check SECRET_KEY - it should never be "changethis" in ANY environment
-        if self.SECRET_KEY == "changethis":
-            raise ValueError(
-                'SECRET_KEY cannot be "changethis". This is a security violation. '
-                'Generate a secure key with: python -c "import secrets; print(secrets.token_urlsafe(32))"'
-            )
+        self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
 
         # Enforce strong passwords in production
         if self.ENVIRONMENT == "production":
@@ -165,10 +168,17 @@ class Settings(BaseSettings):
     # File Storage
     UPLOAD_DIR: Path = Path("./uploads")
     MAX_FILE_SIZE: int = 1024 * 1024 * 10  # 10 MB
+    UPLOAD_CHUNK_SIZE: int = 64 * 1024
+    MAX_DOCX_ENTRIES: int = 2_000
+    MAX_DOCX_UNCOMPRESSED_SIZE: int = 50 * 1024 * 1024
+    MAX_DOCX_ENTRY_SIZE: int = 20 * 1024 * 1024
+    MAX_DOCX_COMPRESSION_RATIO: int = 100
     MAX_REQUEST_BODY_SIZE: int = (
         1024 * 1024 * 15
     )  # 15 MB (slightly larger than max file to allow form overhead)
     ALLOWED_EXTENSIONS: list[str] = [".pdf", ".md", ".docx", ".txt"]
+    WEBSOCKET_MAX_MESSAGE_SIZE: int = 64 * 1024
+    WEBSOCKET_MAX_CONTENT_LENGTH: int = 10_000
 
     # Database SSL
     # SSL modes: disable, allow, prefer, require, verify-ca, verify-full

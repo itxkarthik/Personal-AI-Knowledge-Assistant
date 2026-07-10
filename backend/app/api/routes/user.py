@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlmodel import col, func, select
 
 from app import crud
@@ -10,6 +10,7 @@ from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.api.routes.auth import clear_auth_cookies, set_auth_cookies
 from app.core.config import settings
 from app.core.exceptions import AppError, ExternalServiceError
+from app.core.rate_limit import limiter
 from app.core.security import get_password_hash, verify_password
 from app.models.user import (
     LlmProvider,
@@ -328,7 +329,10 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
-def register_user(session: SessionDep, user_in: UserRegister) -> VerificationChallenge:
+@limiter.limit("5/hour")  # type: ignore[misc]
+def register_user(
+    request: Request, session: SessionDep, user_in: UserRegister
+) -> VerificationChallenge:
     """
     Register a new user
     """
@@ -365,7 +369,9 @@ def register_user(session: SessionDep, user_in: UserRegister) -> VerificationCha
 
 
 @router.post(path="/verify-email", response_model=Token)
+@limiter.limit("10/minute")  # type: ignore[misc]
 def verify_email(
+    request: Request,
     response: Response,
     session: SessionDep,
     body: VerifyEmailRequest,
@@ -406,7 +412,9 @@ def verify_email(
     response_model=ResendVerificationResponse,
     status_code=status.HTTP_202_ACCEPTED,
 )
+@limiter.limit("5/minute")  # type: ignore[misc]
 def resend_verification(
+    request: Request,
     session: SessionDep,
     body: ResendVerificationRequest,
 ) -> ResendVerificationResponse:

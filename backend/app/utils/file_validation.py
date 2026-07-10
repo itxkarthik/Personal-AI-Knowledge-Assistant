@@ -1,3 +1,5 @@
+from zipfile import BadZipFile, ZipFile
+
 import magic
 from fastapi import HTTPException, UploadFile
 
@@ -33,15 +35,15 @@ async def validate_upload_file(file: UploadFile) -> None:
             detail=f"File type '{ext}' not allowed. Allowed: {settings.ALLOWED_EXTENSIONS}",
         )
 
-    # 2. Read content for size + magic byte checks
-    content = await file.read()
-    await file.seek(0)  # Reset for downstream consumers
-
-    if len(content) > settings.MAX_FILE_SIZE:
+    if file.size is not None and file.size > settings.MAX_FILE_SIZE:
         raise HTTPException(
             status_code=413,
             detail=f"File too large. Maximum size: {settings.MAX_FILE_SIZE // (1024 * 1024)} MB",
         )
+
+    # Read only a bounded prefix for signature validation.
+    content = await file.read(2048)
+    await file.seek(0)  # Reset for downstream consumers
 
     # 3. Magic bytes validation
     detected_mime = magic.from_buffer(content[:2048], mime=True)
@@ -52,6 +54,37 @@ async def validate_upload_file(file: UploadFile) -> None:
             status_code=400,
             detail=f"File content does not match extension '{ext}'. " f"Detected: {detected_mime}",
         )
+
+    if ext == ".docx":
+        _validate_docx_archive(file)
+        await file.seek(0)
+
+
+def _validate_docx_archive(file: UploadFile) -> None:
+    try:
+        with ZipFile(file.file) as archive:
+            entries = archive.infolist()
+            if len(entries) > settings.MAX_DOCX_ENTRIES:
+                raise HTTPException(status_code=400, detail="DOCX archive contains too many files")
+
+            total_size = 0
+            for entry in entries:
+                total_size += entry.file_size
+                if entry.file_size > settings.MAX_DOCX_ENTRY_SIZE:
+                    raise HTTPException(status_code=400, detail="DOCX archive entry is too large")
+                if total_size > settings.MAX_DOCX_UNCOMPRESSED_SIZE:
+                    raise HTTPException(
+                        status_code=400, detail="DOCX expanded content is too large"
+                    )
+                if entry.file_size and (
+                    entry.compress_size == 0
+                    or entry.file_size / entry.compress_size > settings.MAX_DOCX_COMPRESSION_RATIO
+                ):
+                    raise HTTPException(
+                        status_code=400, detail="Highly compressed DOCX is not allowed"
+                    )
+    except BadZipFile as exc:
+        raise HTTPException(status_code=400, detail="Invalid DOCX archive") from exc
 
 
 def _get_extension(filename: str) -> str:

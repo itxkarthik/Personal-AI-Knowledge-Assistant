@@ -411,12 +411,13 @@ class TestTokenValidation:
 
         # Should not be blacklisted
         jti = decoded.get("jti")
+        assert isinstance(jti, str)
         assert not auth_service.is_access_token_blacklisted(session=db_session, jti=jti)
 
     def test_invalid_token_signature_fails(self, db_session: Session, test_user: User):
         """Token with invalid signature should fail verification."""
         # Create a token with wrong secret
-        wrong_secret = "wrong_secret_key"
+        wrong_secret = "wrong_secret_key_that_is_long_enough"
         fake_token = jwt.encode(
             {
                 "sub": str(test_user.id),

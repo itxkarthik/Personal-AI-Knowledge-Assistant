@@ -1,12 +1,12 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Use a pnpm version that is compatible with Node 20
-RUN corepack enable && corepack prepare pnpm@10.15.1 --activate
+# Keep Docker installs aligned with the lockfile and workspace policy.
+RUN corepack enable && corepack prepare pnpm@11.11.0 --activate
 
 # Install dependencies first for better layer caching
-COPY frontend/package.json frontend/pnpm-lock.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN pnpm install --no-frozen-lockfile
 
 # Copy frontend source

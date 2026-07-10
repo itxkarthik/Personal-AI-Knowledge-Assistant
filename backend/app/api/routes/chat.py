@@ -1,14 +1,22 @@
 import json
 import logging
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 
+import jwt
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from jwt.exceptions import InvalidTokenError
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from sqlmodel import Session, select
 
 from app.api.deps import CurrentUser, SessionDep
+from app.core import security
+from app.core.config import settings
+from app.core.database import engine
 from app.core.websocket import manager
 from app.models.chat import ChatMessages, ChatRole, ChatSession
+from app.models.user import TokenBlacklist, TokenPayload, User
 from app.schemas.chat import (
     ChatCreate,
     ChatMessageCreate,
@@ -42,6 +50,80 @@ class ChatSessionListResponse(BaseModel):
 class ConvertChatToNoteRequest(BaseModel):
     title: str | None = Field(default=None, max_length=500)
     folder_id: int | None = None
+
+
+class WebSocketChatMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["message"]
+    content: str = Field(min_length=1, max_length=settings.WEBSOCKET_MAX_CONTENT_LENGTH)
+
+    @field_validator("content")
+    @classmethod
+    def normalize_content(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("Message content cannot be empty")
+        return normalized
+
+
+def _is_allowed_websocket_origin(origin: str | None) -> bool:
+    if not origin:
+        return False
+    normalized = origin.rstrip("/")
+    return normalized in settings.all_cors_origins
+
+
+def _parse_websocket_message(data: str) -> WebSocketChatMessage:
+    if len(data.encode("utf-8")) > settings.WEBSOCKET_MAX_MESSAGE_SIZE:
+        raise ValueError("WebSocket message is too large")
+    return WebSocketChatMessage.model_validate_json(data)
+
+
+async def _authenticate_websocket(websocket: WebSocket, session_id: int) -> int | None:
+    if not _is_allowed_websocket_origin(websocket.headers.get("origin")):
+        await websocket.close(code=4403, reason="Origin not allowed")
+        return None
+
+    token = websocket.cookies.get(settings.ACCESS_TOKEN_COOKIE_NAME)
+    if not token:
+        await websocket.close(code=4401, reason="Authentication required")
+        return None
+
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[security.ALGORITHM])
+        token_data = TokenPayload(**payload)
+        user_id = int(token_data.sub) if token_data.sub else None
+    except (InvalidTokenError, ValueError, TypeError):
+        await websocket.close(code=4401, reason="Invalid authentication")
+        return None
+
+    if user_id is None:
+        await websocket.close(code=4401, reason="Invalid authentication")
+        return None
+
+    with Session(engine) as session:
+        if (
+            token_data.jti
+            and session.exec(
+                select(TokenBlacklist).where(TokenBlacklist.jti == token_data.jti)
+            ).first()
+        ):
+            await websocket.close(code=4401, reason="Authentication revoked")
+            return None
+
+        user = session.get(User, user_id)
+        chat_session = session.exec(
+            select(ChatSession).where(
+                ChatSession.id == session_id,
+                ChatSession.user_id == user_id,
+            )
+        ).first()
+        if not user or not user.is_active or not user.is_verified or not chat_session:
+            await websocket.close(code=4403, reason="Access denied")
+            return None
+
+    return user_id
 
 
 def _to_chat_message_response(message: ChatMessages) -> ChatMessageResponse:
@@ -291,27 +373,9 @@ async def websocket_endpoint(
     websocket: WebSocket,
     session_id: int,
 ) -> None:
-    """
-    WebSocket endpoint for real-time chat messaging.
-
-    Connection flow:
-    1. Client connects with authentication token in query params
-    2. Server validates token and establishes connection
-    3. Client receives existing message history
-    4. Messages are broadcast to all connected users in session
-
-    Message format:
-    {
-        "type": "message" | "connection" | "error",
-        "content": "...",
-        "sender_id": user_id,
-        "timestamp": ISO datetime,
-        ...
-    }
-    """
-    # TODO: Extract and validate authentication token from query params
-    # For now, accept all connections (in production, validate JWT)
-    user_id = 1  # Placeholder: extract from token
+    user_id = await _authenticate_websocket(websocket, session_id)
+    if user_id is None:
+        return
 
     await manager.connect(websocket, session_id, user_id)
 
@@ -331,18 +395,16 @@ async def websocket_endpoint(
         # Listen for incoming messages
         while True:
             data = await websocket.receive_text()
-            message_data = json.loads(data)
+            message_data = _parse_websocket_message(data)
 
             # Broadcast message to session
             await manager.broadcast_to_session(
                 session_id,
                 {
                     "type": "message",
-                    "content": message_data.get("content"),
+                    "content": message_data.content,
                     "sender_id": user_id,
-                    "timestamp": __import__("datetime")
-                    .datetime.now(__import__("datetime").timezone.utc)
-                    .isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
 
@@ -361,6 +423,9 @@ async def websocket_endpoint(
                 },
             )
 
-    except Exception as e:
-        logger.exception(f"WebSocket error in session {session_id}: {e}")
+    except (ValueError, json.JSONDecodeError):
+        await websocket.close(code=1008, reason="Invalid message")
+        manager.disconnect(session_id, user_id)
+    except Exception:
+        logger.exception("WebSocket error in session %s", session_id)
         manager.disconnect(session_id, user_id)

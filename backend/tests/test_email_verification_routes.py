@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session
 
 from app import crud
+from app.core.rate_limit import limiter
 from app.main import app
 from app.models.user import UserCreate
 
@@ -87,6 +88,22 @@ def test_resend_is_neutral_for_unknown_email(monkeypatch) -> None:
 
     assert response.status_code == 202
     assert response.json()["retry_after_seconds"] == 60
+
+
+def test_resend_verification_is_rate_limited(monkeypatch) -> None:
+    _capture_delivery(monkeypatch)
+    limiter.reset()
+
+    responses = [
+        client.post(
+            "/api/v1/users/resend-verification",
+            json={"email": f"missing-{index}@example.com"},
+        )
+        for index in range(6)
+    ]
+
+    assert [response.status_code for response in responses[:5]] == [202] * 5
+    assert responses[5].status_code == 429
 
 
 def test_email_change_requires_reverification(session: Session, monkeypatch) -> None:
