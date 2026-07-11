@@ -1,0 +1,68 @@
+name: Full Stack
+
+on:
+  push:
+    branches: [main, release-foundation]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ollama-e2e:
+    runs-on: [self-hosted, cognolith-ai]
+    timeout-minutes: 60
+    env:
+      ENVIRONMENT: local
+      SECRET_KEY: ci-only-secret-key-that-is-long-and-random-enough
+      POSTGRES_PASSWORD: cognolith-ci-postgres
+      SIGNUP_RATE_LIMIT: 100/hour
+      MAILPIT_SMTP_PORT: "11025"
+      MAILPIT_UI_PORT: "18025"
+      OLLAMA_CHAT_MODEL: llama3.2:1b
+      OLLAMA_EMBEDDING_MODEL: nomic-embed-text
+      E2E_BASE_URL: http://127.0.0.1:8080
+      MAILPIT_URL: http://127.0.0.1:18025
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.11.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --dir frontend run test:e2e:install
+      - name: Start complete stack and install models
+        run: docker compose --profile ai up --build -d
+      - name: Wait for model installation
+        shell: bash
+        run: |
+          timeout 1800 sh -c 'until [ "$(docker inspect --format "{{.State.Status}}:{{.State.ExitCode}}" cognolith-ollama-models 2>/dev/null)" = "exited:0" ]; do sleep 10; done'
+          docker compose --profile ai restart backend
+          timeout 180 sh -c 'until curl -fsS http://127.0.0.1:3000/health/ready | grep -q "\"ollama\":\"up\""; do sleep 5; done'
+      - run: pnpm --dir frontend run test:e2e
+      - name: Upload browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-${{ github.run_id }}
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+          if-no-files-found: ignore
+      - name: Capture service logs
+        if: always()
+        run: docker compose --profile ai logs --no-color > full-stack.log
+      - name: Upload service logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-stack-logs-${{ github.run_id }}
+          path: full-stack.log
+      - name: Stop stack
+        if: always()
+        run: docker compose --profile ai down --remove-orphans

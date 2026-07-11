@@ -13,6 +13,7 @@ const ENDPOINT_TIMEOUTS = {
 	"GET /search": 60000, // 60 seconds for semantic search
 	"POST /knowledge-graph": 60000, // 60 seconds for graph generation
 	"POST /rag": 60000, // 60 seconds for RAG queries
+	"POST /users/signup": 30000, // Password hashing and SMTP can be slower on small self-hosted systems
 
 	// Regular API operations - standard timeout
 	"GET /documents": 15000, // 15 seconds

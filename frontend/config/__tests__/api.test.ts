@@ -122,6 +122,10 @@ describe("API Configuration - Endpoint-Specific Timeouts", () => {
 		});
 
 		describe("Prefix Matching", () => {
+			it("allows registration to complete on constrained self-hosted systems", () => {
+				expect(getTimeoutForEndpoint("POST", "/users/signup")).toBe(30000);
+			});
+
 			it("should match POST /documents for POST /documents/123/edit", () => {
 				expect(getTimeoutForEndpoint("POST", "/documents/123/edit")).toBe(120000);
 			});

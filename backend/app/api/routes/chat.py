@@ -1,5 +1,7 @@
+import asyncio
 import json
 import logging
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from typing import Any, Literal
 
@@ -36,6 +38,46 @@ from app.services.chat_service import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _generate_chat_response_in_worker(
+    *, user_id: int, session_id: int, body: ChatMessageCreate
+) -> ChatMessages:
+    with Session(engine) as worker_session:
+        user = worker_session.get(User, user_id)
+        if user is None:
+            raise ValueError("Authenticated user no longer exists")
+        _, assistant_message = send_message_and_get_response(
+            session=worker_session,
+            current_user=user,
+            chat_session_id=session_id,
+            payload=body,
+        )
+        return assistant_message
+
+
+async def _stream_generated_chat_response(
+    *, user_id: int, session_id: int, body: ChatMessageCreate
+) -> AsyncGenerator[str, None]:
+    yield ": connected\n\n"
+    generation = asyncio.create_task(
+        asyncio.to_thread(
+            _generate_chat_response_in_worker,
+            user_id=user_id,
+            session_id=session_id,
+            body=body,
+        )
+    )
+    while not generation.done():
+        try:
+            await asyncio.wait_for(asyncio.shield(generation), timeout=10)
+        except TimeoutError:
+            yield ": keep-alive\n\n"
+
+    assistant_message = await generation
+    async for event in stream_message_response(assistant_message=assistant_message):
+        yield event
+
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -324,14 +366,14 @@ async def stream_message_endpoint(
     2. Parse SSE events
     3. Stop when receiving `[DONE]` marker
     """
-    _, assistant_message = send_message_and_get_response(
-        session=session,
-        current_user=current_user,
-        chat_session_id=session_id,
-        payload=body,
-    )
+    if current_user.id is None:
+        raise ValueError("Authenticated user has no id")
     return StreamingResponse(
-        stream_message_response(assistant_message=assistant_message),
+        _stream_generated_chat_response(
+            user_id=current_user.id,
+            session_id=session_id,
+            body=body,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

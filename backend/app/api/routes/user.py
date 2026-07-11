@@ -329,7 +329,7 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
         500: {"model": StandardErrorResponse, "description": "Internal server error"},
     },
 )
-@limiter.limit("5/hour")  # type: ignore[misc]
+@limiter.limit(settings.SIGNUP_RATE_LIMIT)  # type: ignore[misc]
 def register_user(
     request: Request, session: SessionDep, user_in: UserRegister
 ) -> VerificationChallenge:

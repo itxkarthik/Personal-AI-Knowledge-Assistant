@@ -200,6 +200,7 @@ class Settings(BaseSettings):
     # Rate Limiting
     RATE_LIMIT_WINDOW: int = 60  # seconds
     RATE_LIMIT_MAX_REQUESTS: int = 100
+    SIGNUP_RATE_LIMIT: str = "5/hour"
 
     # Logging
     LOG_LEVEL: str = "INFO"

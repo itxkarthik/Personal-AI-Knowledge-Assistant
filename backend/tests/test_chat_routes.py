@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from threading import Event
 from typing import cast
 from unittest import TestCase
 
@@ -12,12 +13,14 @@ from app.api.routes.chat import (
     _authenticate_websocket,
     _is_allowed_websocket_origin,
     _parse_websocket_message,
+    _stream_generated_chat_response,
     _to_chat_message_response,
 )
 from app.core import security
 from app.core.config import settings
 from app.models.chat import ChatMessages, ChatRole, ChatSession
 from app.models.user import UserCreate
+from app.schemas.chat import ChatMessageCreate
 
 
 class FakeWebSocket:
@@ -45,6 +48,37 @@ class ChatRouteSerializationTests(TestCase):
         response = _to_chat_message_response(message)
 
         self.assertEqual(response.role, "user")
+
+
+@pytest.mark.asyncio
+async def test_generated_chat_stream_opens_before_worker_finishes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    release_worker = Event()
+
+    def delayed_generation(**_: object) -> ChatMessages:
+        release_worker.wait(timeout=2)
+        now = datetime.now(UTC)
+        return ChatMessages(
+            id=2,
+            session_id=1,
+            role=ChatRole.assistant,
+            content="Ready",
+            created_at=now,
+            updated_at=now,
+        )
+
+    monkeypatch.setattr("app.api.routes.chat._generate_chat_response_in_worker", delayed_generation)
+    stream = _stream_generated_chat_response(
+        user_id=1,
+        session_id=1,
+        body=ChatMessageCreate(content="Hi"),
+    )
+
+    assert await anext(stream) == ": connected\n\n"
+    release_worker.set()
+    remaining = [event async for event in stream]
+    assert remaining[-1] == "data: [DONE]\n\n"
 
 
 def test_websocket_origin_must_match_configured_frontend() -> None:

@@ -76,6 +76,7 @@ services:
 
       # Security
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
+      SIGNUP_RATE_LIMIT: ${SIGNUP_RATE_LIMIT:-5/hour}
 
       # Email verification
       SMTP_HOST: ${SMTP_HOST:-mailpit}

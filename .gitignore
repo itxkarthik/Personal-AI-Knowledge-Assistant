@@ -12,6 +12,9 @@
 .pnpm-store*
 # testing
 /coverage
+/frontend/playwright-report/
+/frontend/test-results/
+/output/playwright/
 
 # next.js
 /.next/

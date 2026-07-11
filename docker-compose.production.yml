@@ -1,0 +1,100 @@
+services:
+  backend:
+    image: ${COGNOLITH_BACKEND_IMAGE:-ghcr.io/itxkarthik/cognolith-backend:latest}
+    restart: unless-stopped
+    environment:
+      ENVIRONMENT: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      SIGNUP_RATE_LIMIT: ${SIGNUP_RATE_LIMIT:-5/hour}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required for configuration validation}
+      DATABASE_URL: ${DATABASE_URL:?A TLS-enabled PostgreSQL DATABASE_URL is required}
+      DATABASE_SSL_MODE: ${DATABASE_SSL_MODE:-require}
+      FRONTEND_HOST: ${FRONTEND_HOST:?FRONTEND_HOST is required}
+      BACKEND_CORS_ORIGINS: ${BACKEND_CORS_ORIGINS:?BACKEND_CORS_ORIGINS is required}
+      SMTP_HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      SMTP_SSL: ${SMTP_SSL:-false}
+      EMAILS_FROM_EMAIL: ${EMAILS_FROM_EMAIL:?EMAILS_FROM_EMAIL is required}
+      EMAILS_FROM_NAME: ${EMAILS_FROM_NAME:-Cognolith}
+      FIRST_SUPERUSER: ${FIRST_SUPERUSER:?FIRST_SUPERUSER is required}
+      FIRST_SUPERUSER_PASSWORD: ${FIRST_SUPERUSER_PASSWORD:?FIRST_SUPERUSER_PASSWORD is required}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:1b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+      REDIS_URL: ${REDIS_URL:-}
+    volumes:
+      - cognolith_uploads:/usr/src/app/backend/uploads
+      - cognolith_logs:/usr/src/app/backend/logs
+    depends_on:
+      ollama-models:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    networks: [cognolith]
+
+  frontend:
+    image: ${COGNOLITH_FRONTEND_IMAGE:-ghcr.io/itxkarthik/cognolith-frontend:latest}
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3000
+      NEXT_PUBLIC_API_URL: /api/v1
+      NEXT_PUBLIC_FRONTEND_URL: ${FRONTEND_HOST:?FRONTEND_HOST is required}
+    ports:
+      - "${FRONTEND_PORT:-8080}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    networks: [cognolith]
+
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+    networks: [cognolith]
+
+  ollama-models:
+    image: ollama/ollama:latest
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-llama3.2:1b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-nomic-embed-text}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama pull "$${OLLAMA_CHAT_MODEL}"
+        ollama pull "$${OLLAMA_EMBEDDING_MODEL}"
+    networks: [cognolith]
+
+volumes:
+  cognolith_uploads:
+  cognolith_logs:
+  ollama_data:
+
+networks:
+  cognolith:
+    driver: bridge

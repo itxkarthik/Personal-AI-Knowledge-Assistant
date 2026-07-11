@@ -258,6 +258,67 @@ docker compose --profile ai ps
 curl http://localhost:3000/health/ready
 ```
 
+## Continuous Integration
+
+Pull requests and pushes run three validation layers:
+
+- **Quality** runs backend tests, Ruff, BasedPyright, Python and pnpm audits, frontend tests, linting, type checks, and production image builds on GitHub-hosted runners.
+- **Full Stack** starts PostgreSQL, Mailpit, Cognolith, and real Ollama models, then runs Playwright on desktop and mobile Chromium.
+- **Release Images** publishes versioned backend and frontend images to GHCR for tags matching `v*`.
+
+The full-stack workflow requires a trusted self-hosted GitHub Actions runner with Docker, Git, Node.js, curl, and the labels `self-hosted` and `cognolith-ai`. Keep the runner workspace and Docker volumes between jobs so Ollama models are reused. Do not expose this runner to pull requests from untrusted forks.
+
+Install browser dependencies locally and run the same end-to-end suite with:
+
+```bash
+pnpm --dir frontend run test:e2e:install
+docker compose --profile ai up --build -d
+pnpm --dir frontend run test:e2e
+```
+
+Failed CI runs upload Playwright traces, screenshots, videos, and Docker service logs.
+
+## Self-Hosted Releases
+
+Local development continues to use `docker-compose.yml`. Deployment uses `docker-compose.production.yml`, published images, an external TLS-enabled PostgreSQL database, real SMTP, persistent uploads, and persistent Ollama models.
+
+Create the production environment file and replace every placeholder:
+
+```bash
+cp .env.production.example .env.production
+docker compose --env-file .env.production -f docker-compose.production.yml config
+docker compose --env-file .env.production -f docker-compose.production.yml up -d
+```
+
+Run smoke checks after startup or upgrade:
+
+```bash
+sh scripts/release/smoke.sh
+# Windows PowerShell
+./scripts/release/smoke.ps1
+```
+
+For the bundled local PostgreSQL service, create a compressed backup with a checksum before migrations or upgrades:
+
+```bash
+sh scripts/release/backup.sh
+```
+
+Restore into a clean local database volume, then apply current migrations:
+
+```bash
+sh scripts/release/restore.sh backups/cognolith-YYYYMMDDTHHMMSSZ.sql.gz
+```
+
+For production external PostgreSQL, use the provider's snapshot and point-in-time recovery tools. Test restore procedures before relying on them. Roll back application images by pinning `COGNOLITH_BACKEND_IMAGE` and `COGNOLITH_FRONTEND_IMAGE` to the previous release tag; restore the database first when a migration is not backward compatible.
+
+To publish a release, verify `main`, create an annotated `v*` tag, and push it:
+
+```bash
+git tag -a v0.2.0 -m "Cognolith v0.2.0"
+git push origin v0.2.0
+```
+
 ## Architecture
 
 ```mermaid
