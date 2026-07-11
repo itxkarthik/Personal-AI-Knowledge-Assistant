@@ -263,10 +263,10 @@ curl http://localhost:3000/health/ready
 Pull requests and pushes run three validation layers:
 
 - **Quality** runs backend tests, Ruff, BasedPyright, Python and pnpm audits, frontend tests, linting, type checks, and production image builds on GitHub-hosted runners.
-- **Full Stack** starts PostgreSQL, Mailpit, Cognolith, and real Ollama models, then runs Playwright on desktop and mobile Chromium.
+- **Full Stack** is manually dispatched when needed. It starts PostgreSQL, Mailpit, Cognolith, and real Ollama models, then runs Playwright on desktop and mobile Chromium.
 - **Release Images** publishes versioned backend and frontend images to GHCR for tags matching `v*`.
 
-The full-stack workflow requires a trusted self-hosted GitHub Actions runner with Docker, Git, Node.js, curl, and the labels `self-hosted` and `cognolith-ai`. Keep the runner workspace and Docker volumes between jobs so Ollama models are reused. Do not expose this runner to pull requests from untrusted forks.
+The full-stack workflow requires a trusted self-hosted GitHub Actions runner with Docker, Git, Node.js, curl, and the labels `self-hosted` and `cognolith-ai`. Keep the runner workspace and Docker volumes between jobs so Ollama models are reused. Do not expose this runner to pull requests from untrusted forks. Without a matching online runner, a manually started job remains queued; cancel it from the Actions page or bring the runner online.
 
 Install browser dependencies locally and run the same end-to-end suite with:
 
