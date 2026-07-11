@@ -1,9 +1,10 @@
 packages:
   - 'frontend'
   - 'backend'
-ignoredBuiltDependencies:
-  - sharp
-  - unrs-resolver
+allowBuilds:
+  msw: false
+  sharp: true
+  unrs-resolver: true
 minimumReleaseAgeExclude:
   - hono@4.12.29
 overrides:
